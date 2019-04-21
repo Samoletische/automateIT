@@ -1,0 +1,52 @@
+{
+  "pageName": "avitoBooks",                                     // совпадает с именем таблицы в хранилище
+  "startPage": "https://www.avito.ru/omsk/noutbuki?s_trg=3&sgtd=17&q=%D0%BF%D0%B8%D0%BE%D0%BD%D0%B5%D1%80%D1%81%D0%BA%D0%B8%D0%B9+%D0%B3%D0%B0%D0%BB%D1%81%D1%82%D1%83%D0%BA",
+  "maxPagesCollect": "0",                                       // со скольких страниц собирать (0-со всех, но 100 максимум)
+  "storageMethod": "JSON",                                      // метод сохранения данных: JSON, DB
+  "parentElement": {
+    "events": ["moveToElement", "click"],                       // действия, которые необходимо выполнить над элементом перед сбором данных
+    "waitBetweenEvents": "true",                                // нужно ли делать паузы между действиями
+    "waitWhenEnterText": "true",                                // человекоподобный ввод текста
+    "cssSelector": "div.item_table",
+    "values": [ {"fieldName": "id", "attr": "data-item-id"} ],  // собранные данные распределяем по полям таблицы хранилища. Возможно использование "newUID"
+    "childPages": [
+      {
+        "pageName": "avitoBooksImages",                           // ссылка на структуру данных со второстепенной страницы
+        "pageParent": "id"                                        // какое поле из этой таблицы брать в качестве идентификатора родителя второстепенной
+      }
+    ]
+  },
+  "childElements": {
+    "waitBetweenEvents": "true",
+    "waitWhenEnterText": "false",
+    "elements": [
+      {
+        "cssSelector": "a.item-description-title-link",
+        "events": [],
+        "values": [ {"fieldName": "title", "attr": "title"} ]
+      },
+      {
+        "cssSelector": "span.price",
+        "events": [],
+        "values": [ {"fieldName": "price", "attr": "content"} ]
+      },
+      {
+        "cssSelector": "img.item-extended-phone",
+        "events": ["click"],
+        "values": [ {"fieldName": "phoneImg", "attr": "src"} ]
+      }
+    ]
+  },
+  "pagination": {
+    "cssSelector": "div.pagination",
+    "nextPage": "a.js-pagination-next",
+    "events": [],
+    "valueAttr": "href"
+  },
+  "process": [
+    {"fielName": "phone", "command": "save", "param": "img/"}     // способ обработки полей: save-сохранить в папку (имя файла будет: 'pageName/fieldName' + id)
+  ],
+  "childPages": [
+    {}                                                            // структура повторяет структуру основной страницы
+  ]
+}
