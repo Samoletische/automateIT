@@ -1,0 +1,40 @@
+{
+  "pageName": "avitoMacbook",
+  "values": [                                                   // много записей
+    [                                                           // поля одной записи
+      {"name": "id", "value": "1455751397"},
+      {"name": "title", "value": "Macbook Pro 2010"},
+      {"name": "price", "value": "20000"},
+      {"name": "phoneImg", "value": "data:img/png:base64:sdfwieugfhiuweghf..."}
+    ]
+  ],
+  "childPages": [
+    "pageName": "avitoMacbookImages",
+    "parentPage": "avitoMacbook",
+    "parentField": "id",
+    "values": [
+      [
+        {"parentValue": "1455751397", "name": "img", "value": "/img/book1"}
+      ],
+      [
+        {"parentValue": "1455751397", "name": "img", "value": "/img/book2"}
+      ],
+      [
+        {"parentValue": "1455751397", "name": "img", "value": "/img/book3"}
+      ]
+    ]
+  ],
+  "parentElement": {                                            // кусок из web.json
+    "events": ["moveToElement", "click"],                       // действия, которые необходимо выполнить над элементом перед сбором данных
+    "waitBetweenEvents": "true",                                // нужно ли делать паузы между действиями
+    "waitWhenEnterText": "true",                                // человекоподобный ввод текста
+    "cssSelector": "div.item_table",
+    "values": [ {"fieldName": "id", "attr": "data-item-id"} ],  // собранные данные распределяем по полям таблицы хранилища. Возможно использование "newUID"
+    "childPages": [
+      {
+        "pageName": "avitoBooksImages",                           // ссылка на структуру данных со второстепенной страницы
+        "pageParent": "id"                                        // какое поле из этой таблицы брать в качестве идентификатора родителя второстепенной
+      }
+    ]
+  }
+}

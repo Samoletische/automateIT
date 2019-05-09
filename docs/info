@@ -12,31 +12,5 @@
 
   Исходя из этих действий строится JSON-файл "web.json" для входящих настроек парсинга
 
-  Формат данных после сбора данных:
-  {
-    "pageName": "avitoMacbook",
-    "values": [   // много записей
-      [           // поля одной записи
-        {"name": "id", "value": "1455751397"},
-        {"name": "title", "value": "Macbook Pro 2010"},
-        {"name": "price", "value": "20000"},
-        {"name": "phoneImg", "value": "data:img/png:base64:sdfwieugfhiuweghf..."}
-      ]
-    ],
-    "childPages": [
-      "pageName": "avitoMacbookImages",
-      "parentPage": "avitoMacbook",
-      "parentField": "id",
-      "values": [
-        [
-          {"parentValue": "1455751397", "name": "img", "value": "/img/book1"}
-        ],
-        [
-          {"parentValue": "1455751397", "name": "img", "value": "/img/book2"}
-        ],
-        [
-          {"parentValue": "1455751397", "name": "img", "value": "/img/book3"}
-        ]
-      ]
-    ]
-  }
+  Формат данных после сбора данных в файле collactor.json
+  
