@@ -1,17 +1,20 @@
 <?php
 namespace Facebook\WebDriver;
 
-require_once("client_inc.php");
+require_once('client_inc.php');
 // ini_set('error_reporting', E_ALL);
 // ini_set('display_errors', 1);
 // ini_set('display_startup_errors', 1);
 
-$web = new Web();
-$json = json_decode(file_get_contents('../enterData/avitoPioner_web.json'), true);
-if (json_last_error() === JSON_ERROR_NONE)
-  $web->collect($json);
+$webJSON = System::SendRequest($server.'/start.php?', array('command' => 'getJSON'));
+if ($webJSON !== NULL) {
+  $web = new Web($webJSON);
+  //print_r($webJSON);
+  // if ($web !== NULL)
+  //   $web->collect();
+}
 else
-  echo "bad enter JSON";
+  echo "bad enter JSON\n";
 
 // $dir = '../img/';
 // $files = scandir($dir);

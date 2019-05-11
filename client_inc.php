@@ -14,22 +14,97 @@ require_once('../lib/vendor/autoload.php');
 require_once('conf_c.php');
 //-----------------------------------------------------
 
+class System {
+  // sendRequest
+  //  Кодирует получаемый через параметр контент, отправляет его в формате JSON
+  //  в php-скрипт, адрес которого передан через параметр
+  //  Параметры:
+  //    $url - адресная строка до php-скрипта
+  //    $content - параметризированный массив
+  //  Возвращаемые значения:
+  //    Ответ от php-скрипта в формате JSON.
+  //    Если входящий контент или ответ невозможно кодировать в/декодировать из JSON, то возвращается NULL.
+  public static function sendRequest($url, $content) {
+    $json = json_encode($content);
+
+    if (json_last_error() === JSON_ERROR_NONE) {
+      $result = json_decode(file_get_contents($url, false, stream_context_create(array(
+        'http' => array(
+          'method'  => 'POST',
+          'header'  => 'Content-type: application/json',
+          'content' => $json
+        )
+      ))), true);
+      if (json_last_error() === JSON_ERROR_NONE)
+        return $result;
+      else
+        return NULL;
+    }
+    else
+      return NULL;
+  }
+}
+//-----------------------------------------------------
+
 class Web {
 
   private $spiders;
+  private $startPage;
+  private $maxPagesCollect;
   //-----------------------------------------------------
 
-  function __construct() {
+  function __construct($params) {
+    global $spiders, $serverSelenium;
+
     $this->spiders = array();
+    foreach($spiders as $token => $url) {
+      $result = System::sendRequest($url, array('command' => 'areYouReady', 'token' => $token, 'serverSelenium' => $serverSelenium));
+      echo date('h:i:s')."\n";
+      if (($result !== NULL) && (array_key_exists('result', $result)) && ($result['result']))
+        echo "ready\n";
+        $this->spiders[] = array('token' => $token, 'url' => $url);
+    }
+
+    // нет смысла продолжать, если некому собирать инфу
+    if (count($this->spiders) == 0)
+      return NULL;
+
+    $this->startPage            = $params['startPage'];
+    $this->maxPagesCollect      = $params['maxPagesCollect'];
   } // __construct
   //-----------------------------------------------------
 
+  function __destruct() {
+    foreach($this->spiders as $spider)
+      unset($spider);
+  } // __destruct
+  //-----------------------------------------------------
+
   public function collect($params) {
-    $this->spiders[0] = new Spider($params);
-    if ($this->spiders[0]->getStatus() == "new")
-      $this->spiders[0]->collect();
-    else {
-      unset($this->spiders[0]);
+    $maxPagesCollect = $this->maxPagesCollect == 0 ? 100 : $this->maxPagesCollect;
+    $currPage = $this->startPage;
+    $pageNum = 0;
+
+    while (true) {
+      foreach($this->spiders as $spider) {
+        $status = '';
+        $result = System::sendRequest($spider, array('command' => 'getStatus'));
+        if (($result !== NULL) && (array_key_exists('result', $result)) && ($result['result']))
+          $status = $result['result'];
+        if ((($status == 'new') || ($status == 'complete')) && ($currPage != '')) {
+          $pageNum++;
+          $currPage = '';
+          $result = System::sendRequest($spider, array('command' => 'getNextPage', 'currPage' => $currPage, 'pageNum' => $pageNum));
+          if (($result !== NULL) && (array_key_exists('result', $result)) && ($result['result']))
+            $currPage = $result['result'];
+          $spider->setCurrPage($currPage);
+          $currPage = $spider->getNextPage();
+          $spider->collect($pageNum);
+        }
+      }
+
+      if ($currPage == '')
+        break;
     }
   } // collect
   //-----------------------------------------------------
@@ -51,8 +126,8 @@ class Spider {
   private $result;
   private $status; // 'new', 'badEnterData', 'collecting', 'processing', 'storaging', 'complete'
 
-  private $startPage;
-  private $maxPagesCollect;
+  // private $startPage;
+  // private $maxPagesCollect;
   private $storageMethod;
   private $parentElement;
   private $childElements;
@@ -70,8 +145,8 @@ class Spider {
     try {
       $this->eraseResult($params['pageName']);
 
-      $this->startPage            = $params['startPage'];
-      $this->maxPagesCollect      = $params['maxPagesCollect'];
+      // $this->startPage            = $params['startPage'];
+      // $this->maxPagesCollect      = $params['maxPagesCollect'];
       $this->storage              = $params['storage'];
       $this->parentElement        = $params['parentElement'];
       $this->childElements        = $params['childElements'];
@@ -97,51 +172,82 @@ class Spider {
   } // _destruct
   //-----------------------------------------------------
 
+  public function ReadyToUse($serverSelenium) {
+    // проверка на доступность Selenium'а
+    return true;
+  } // ReadyToUse
+  //-----------------------------------------------------
+
+  public function setCurrPage($page) {
+    $this->currPage = $page;
+  } // setCurrPage
+  //-----------------------------------------------------
+
+  // getNextPage()
+  //  Функция возвращает ссылку на следующую страницу по параметрам пагинатора
+  //  В случае отсутствия элемента со ссылкой на следующую страницу возвращается пустая строка
+  public function getNextPage() {
+    $page = '';
+    $links = $this->driver->findElements(WebDriverBy::cssSelector($this->pagination['cssSelector']));
+    //$c = 3;
+    foreach ($links as $link) {
+      $nextPage = $this->getExistingElement($link, $this->pagination['nextPage']);
+      if ($nextPage) {
+        $this->doEvents($nextPage, $this->pagination['events']);
+        $page = $nextPage->getAttribute($this->pagination['valueAttr']);
+      }
+    }
+    return $page;
+  } // getNextPage
+  //-----------------------------------------------------
+
+  public function getStatus() {
+    return $this->status;
+  } // getStatus
+  //-----------------------------------------------------
+
+  public function collect($pageNum) {
+    $this->status = 'collecting';
+    // $pcurrPage = $this->currPage;
+    // $lastPage = '';
+    // $maxPagesCollect = $this->maxPagesCollect == 0 ? 100 : $this->maxPagesCollect;
+    $this->currPageNum = $pageNum;
+
+    if ($this->currPage == '') {
+      $this->status = 'complete';
+      return;
+    }
+
+    // collect
+    $this->collectFromPage($this->currPage);
+
+    // process
+    if ($this->status == 'error')
+      return;
+    else
+      $this->process();
+
+    // storage
+    if ($this->status == 'error')
+      return;
+    else
+      $this->storage();
+
+    // finish
+    if ($this->status == 'error')
+      return;
+    else {
+      $this->eraseResult($result['pageName']);
+      $this->status = 'complete';
+    }
+  } // collect
+  //-----------------------------------------------------
+
   private function eraseResult($pageName) {
     $this->result['pageName']   = $pageName;
     $this->result['values']     = array();
     $this->result['childPages'] = array();
   } // eraseResult
-  //-----------------------------------------------------
-
-  public function getStatus() {
-    return $this->status;
-  }
-  //-----------------------------------------------------
-
-  public function collect() {
-    $this->status = 'collecting';
-    $page = $this->startPage;
-    $lastPage = '';
-    $maxPagesCollect = $this->maxPagesCollect == 0 ? 100 : $this->maxPagesCollect;
-    $this->currPageNum = 0;
-    while (true) {
-      if (($page == '') || ($page == $lastPage)) {
-        $this->status = 'complete';
-        break;
-      }
-      $this->currPageNum++;
-      $lastPage = $page;
-      $this->collectFromPage($page);
-      if ($this->status == 'collecting')
-        $this->process();
-        //$this->status = 'processing';
-      if ($this->status == 'processing')
-        $this->storage();
-      if ($this->status == 'storaging') {
-        $this->eraseResult($result['pageName']);
-        $page = $this->getNextPage();
-        if ($page == '') {
-          $this->status = 'complete';
-          break;
-        }
-      }
-      if (--$maxPagesCollect < 1) {
-        $this->status = 'complete';
-        break;
-      }
-    }
-  } // collect
   //-----------------------------------------------------
 
   private function collectFromPage($page, $childPage = false, $num = 0) {
@@ -181,21 +287,6 @@ class Spider {
     }
     // 3. go to next page
   } // collect
-  //-----------------------------------------------------
-
-  private function getNextPage() {
-    $page = '';
-    $links = $this->driver->findElements(WebDriverBy::cssSelector($this->pagination['cssSelector']));
-    //$c = 3;
-    foreach ($links as $link) {
-      $nextPage = $this->getExistingElement($link, $this->pagination['nextPage']);
-      if ($nextPage) {
-        $this->doEvents($nextPage, $this->pagination['events']);
-        $page = $nextPage->getAttribute($this->pagination['valueAttr']);
-      }
-    }
-    return $page;
-  } // getNextPage
   //-----------------------------------------------------
 
   private function getExistingElement($link, $cssSelector) {

@@ -1,0 +1,8 @@
+#!/bin/bash
+cp conf_s.php /Volumes/www/automateIT/conf_s.php
+cp conf_c.php /Volumes/www/automateIT/conf_c.php
+cp server_inc.php /Volumes/www/automateIT/server_inc.php
+cp client_inc.php /Volumes/www/automateIT/client_inc.php
+cp start.php /Volumes/www/automateIT/start.php
+cp storage.php /Volumes/www/automateIT/storage.php
+cp spider.php /Volumes/www/automateIT/spider.php
