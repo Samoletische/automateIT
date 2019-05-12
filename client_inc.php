@@ -48,6 +48,8 @@ class System {
 
 class Web {
 
+  const TIMEOUT = 3; // если 3 минуты нет 'вестей' от Сборщика то выходим из сборки данных
+
   private $spiders;
   private $startPage;
   private $maxPagesCollect;
@@ -58,8 +60,7 @@ class Web {
 
     $this->spiders = array();
     foreach($spiders as $token => $url) {
-      $result = System::sendRequest($url, array('command' => 'areYouReady', 'token' => $token, 'serverSelenium' => $serverSelenium));
-      echo date('h:i:s')."\n";
+      $result = System::sendRequest($url, array('command' => 'areYouReady', 'token' => $token, 'params' => $params));
       if (($result !== NULL) && (array_key_exists('result', $result)) && ($result['result']))
         echo "ready\n";
         $this->spiders[] = array('token' => $token, 'url' => $url);
@@ -80,33 +81,44 @@ class Web {
   } // __destruct
   //-----------------------------------------------------
 
-  public function collect($params) {
+  public function collect() {
     $maxPagesCollect = $this->maxPagesCollect == 0 ? 100 : $this->maxPagesCollect;
     $currPage = $this->startPage;
     $pageNum = 0;
+    $lastResponse = time();
 
     while (true) {
       foreach($this->spiders as $spider) {
-        $status = '';
-        $result = System::sendRequest($spider, array('command' => 'getStatus'));
-        if (($result !== NULL) && (array_key_exists('result', $result)) && ($result['result']))
-          $status = $result['result'];
-        if ((($status == 'new') || ($status == 'complete')) && ($currPage != '')) {
+        echo "getStatus\n";
+        $status = $this->sendCommandToSpider($spider, 'getStatus');
+        echo $status."\n";
+        if ($status == 'ready') {
           $pageNum++;
-          $currPage = '';
-          $result = System::sendRequest($spider, array('command' => 'getNextPage', 'currPage' => $currPage, 'pageNum' => $pageNum));
-          if (($result !== NULL) && (array_key_exists('result', $result)) && ($result['result']))
-            $currPage = $result['result'];
-          $spider->setCurrPage($currPage);
-          $currPage = $spider->getNextPage();
-          $spider->collect($pageNum);
+          $this->sendCommandToSpider($spider, 'setCurrPage', array('currPage' => $currPage));
+          $currPage = $this->sendCommandToSpider($spider, 'getNextPage');
+          $this->sendCommandToSpider($spider, 'collect');
+          $lastResponse = time();
         }
       }
 
-      if ($currPage == '')
+      if (($currPage == '') || (($lastResponse + self::TIMEOUT) < time()))
         break;
+
+      sleep(1);
     }
   } // collect
+  //-----------------------------------------------------
+
+  private function sendCommandToSpider($spider, $command, $additionParams=NULL) {
+    $result = '';
+    $params = array('command' => $command, 'token' => $spider['token']);
+    if (isset($additionParams))
+      $params = array_merge($params, $additionParams);
+    $answer = System::sendRequest($spider['url'], $params);
+    if (($answer !== NULL) && (array_key_exists('result', $answer)))
+      $result = $answer['result'];
+    return $result;
+  } // sendCommandToSpider
   //-----------------------------------------------------
 
   public function printResult() {
@@ -124,10 +136,9 @@ class Spider {
   private $currPage;
   private $currPageNum;
   private $result;
-  private $status; // 'new', 'badEnterData', 'collecting', 'processing', 'storaging', 'complete'
+  private $status; // 'ready', 'collecting', 'processing', 'storaging'
+  private $token;
 
-  // private $startPage;
-  // private $maxPagesCollect;
   private $storageMethod;
   private $parentElement;
   private $childElements;
@@ -136,29 +147,49 @@ class Spider {
   private $process;
   //-----------------------------------------------------
 
-  function __construct($params) {
+  function __construct($token, $params) {
     global $serverSelenium;
 
-    $this->status                 = 'new';
+    $this->status                 = 'ready';
+    $this->token                  = $token;
     $this->result                 = array();
 
-    try {
+    if (array_key_exists('pageName', $params))
       $this->eraseResult($params['pageName']);
+    else
+      return NULL;
 
-      // $this->startPage            = $params['startPage'];
-      // $this->maxPagesCollect      = $params['maxPagesCollect'];
+    if (array_key_exists('storage', $params))
       $this->storage              = $params['storage'];
-      $this->parentElement        = $params['parentElement'];
-      $this->childElements        = $params['childElements'];
-      $this->childPages           = $params['childPages'];
-      $this->pagination           = $params['pagination'];
-      $this->process              = $params['process'];
+    else
+      return NULL;
 
-      $this->driver               = RemoteWebDriver::create($serverSelenium, DesiredCapabilities::chrome());
-    }
-    catch (Exception $e) {
-      $this->status               = 'badEnterData';
-    }
+    if (array_key_exists('parentElement', $params))
+      $this->parentElement        = $params['parentElement'];
+    else
+      return NULL;
+
+    if (array_key_exists('childElements', $params))
+      $this->childElements        = $params['childElements'];
+    else
+      return NULL;
+
+    if (array_key_exists('childPages', $params))
+      $this->childPages           = $params['childPages'];
+    else
+      return NULL;
+
+    if (array_key_exists('pagination', $params))
+      $this->pagination           = $params['pagination'];
+    else
+      return NULL;
+
+    if (array_key_exists('process', $params))
+      $this->process              = $params['process'];
+    else
+      return NULL;
+
+    $this->driver               = RemoteWebDriver::create($serverSelenium, DesiredCapabilities::chrome());
 } // __construct
   //-----------------------------------------------------
 
@@ -172,7 +203,7 @@ class Spider {
   } // _destruct
   //-----------------------------------------------------
 
-  public function ReadyToUse($serverSelenium) {
+  public function ReadyToUse() {
     // проверка на доступность Selenium'а
     return true;
   } // ReadyToUse
