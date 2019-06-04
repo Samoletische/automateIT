@@ -7,32 +7,45 @@ ini_set('error_reporting', E_ALL);
 ini_set('display_errors', 1);
 ini_set('display_startup_errors', 1);
 
-define('TIMEOUT', 10);
+define('TIMEOUT', 40);
 //-----------------------------------------------------
 
 if (isset($argv)) { // запуск готового Сборщика из консоли
+  echo date('h:i:s')." - start spider\n";
   // можно положить pid в отдельный файл
   //echo getmypid()."\n";
-  if (count($argv) < 2)
+  if (count($argv) < 2) {
+    echo date('h:i:s')." - count of argv < 2 - exit\n";
     exit();
+  }
 
   //echo $argv[1]."\n";
 
   // читаем файл с параметрами
   $filename = 'params_'.$argv[1].'.txt';
   //echo $filename."\n";
-  if (!file_exists($filename))
+  if (!file_exists($filename)) {
+    echo date('h:i:s')." - file of params don't exists - exit\n";
     exit();
+  }
   //echo "exists\n";
 
   $params = json_decode(file_get_contents($filename), true);
-  if (json_last_error() !== JSON_ERROR_NONE)
+  if (json_last_error() !== JSON_ERROR_NONE) {
+    echo date('h:i:s')." - file of params is not web.json format - exit\n";
     exit();
+  }
 
   $spider = new Spider($argv[1], $params);
   // переданы некорректные данные и поэтому закрываем Сборщика
-  if ($spider === NULL)
+  if ($spider === NULL) {
+    echo date('h:i:s')." - can't start Spider - exit\n";
     exit();
+  }
+
+  $filename = $argv[1].'.out.txt';
+  if (file_exists($filename))
+    unlink($filename);
 
   $lastResponse = time();
   //echo $lastResponse;
@@ -43,46 +56,58 @@ if (isset($argv)) { // запуск готового Сборщика из ко�
     if (file_exists($filename)) {
       $f = fopen($filename, 'r');
       if ($f) {
-        flock($f, LOCK_EX);
-        $commands = explode("\n", fread($f, filesize($filename)));
+        //flock($f, LOCK_EX);
+        //$commands = explode("\n", fread($f, filesize($filename)));
+        $command = fread($f, filesize($filename));
+        fclose($f);
+        unlink($filename);
+        //echo date('h:i:s')." - receive command: ".print_r($commands)."\n";
+        echo date('h:i:s')." - receive command: ".$command."\n";
         // получаем команды
-        foreach ($commands as $command) {
+        //foreach ($commands as $command) {
           //$command = trim(fgets(STDIN));
           if (strlen($command) > 0) {
             //echo $command."\n";
-            $result = array('result' => 'bad command');
+            $result = NULL;
             // получаем параметры команды
             $commandParams = explode(',', $command);
+            $method = $commandParams[0];
+            echo date('h:i:s')." - command params: ".print_r($commandParams)."\n";
             // если метод существует, то вызываем его
-            if (method_exists($spider, $commandParams[0])) {
-              switch ($commandParams[0]) {
+            if (method_exists($spider, $method)) {
+              switch ($method) {
                 case 'setCurrPage':
-                  if (count($commandParams) > 1)
-                    $result['result'] = $spider->$command($commandParams[1]);
+                  if (count($commandParams) > 2)
+                    $result = $spider->$method($commandParams[1], $commandParams[2]);
                   break;
                 default:
-                  $result['result'] = $spider->$command();
+                  $result = $spider->$method();
               }
             }
-            echo $result['result'];
+            setAnswer($argv[1], $result);
+            if ($result === NULL) {
+              echo date('h:i:s')." - can't continues - exit\n";
+              exit();
+            }
             //print_r($result);
             $lastResponse = time();
           }
           // else
             //echo "no command\n";
-        }
-        fclose($f);
-        unlink($filename);
+        //}
       }
     }
 
-    if (($lastResponse + TIMEOUT) < time())
+    if (($lastResponse + TIMEOUT) < time()) {
+      echo date('h:i:s')." - time of waiting a commands is out\n";
       break;
+    }
 
     sleep(1);
 
     //echo $c++;
   }
+  echo date('h:i:s').' - exit';
 }
 else { // команды управления Сборщиком через HTTP
   $content = file_get_contents('php://input');
@@ -133,9 +158,13 @@ function areYouReady($in) {
     }
 
     // запускаем Сборщик
-    if ($result['result'])
-      if (!system("php -f spider.php ".$in['token']." > ".$in['token'].".out.txt 2>/dev/null &"))
+    if ($result['result']) {
+      $filename = $in['token'].'.in.txt';
+      if (file_exists($filename))
+        unlink($filename);
+      if (!system("php -f spider.php ".$in['token']." > ".$in['token'].".log.txt 2>&1 &"))
         $result['result'] = false;
+    }
   }
 
   return $result;
@@ -144,37 +173,81 @@ function areYouReady($in) {
 //-----------------------------------------------------
 
 function sendCommand($token, $command) {
-  $f = fopen($token.'.in.txt', 'w');
-  if ($f) {
-    fwrite($f, $command);
-    fclose($f);
-    return true;
+  $result = false;
+  $filename = $token.'.in.txt';
+  $lastResponse = time();
+  while(true) {
+    if (!file_exists($filename)) {
+      $f = fopen($filename, 'w');
+      if ($f) {
+        fwrite($f, $command);
+        fclose($f);
+        $result = true;
+        break;
+      }
+    }
+
+    if (($lastResponse + TIMEOUT) < time())
+      break;
+
+    sleep(1);
   }
-  else
-    return false;
+
+  return $result;
 } // sendCommand
 //-----------------------------------------------------
 
 function getAnswer($token) {
   $result = '';
   $filename = $token.'.out.txt';
-  if (file_exists($filename)) {
-    $f = fopen($filename, 'r');
-    $result = fgets($f, filesize($filename) + 1);
-    fclose($f);
+  $lastResponse = time();
+  while(true) {
+    if (file_exists($filename)) {
+      $f = fopen($filename, 'r');
+      $result = fgets($f, filesize($filename) + 1);
+      fclose($f);
+      unlink($filename);
+      break;
+    }
+
+    if (($lastResponse + TIMEOUT) < time())
+      break;
+
+    sleep(1);
   }
   return $result;
 } // getAnswer
 //-----------------------------------------------------
 
+function setAnswer($token, $answer) {
+  $result = false;
+  $filename = $token.'.out.txt';
+  $lastResponse = time();
+  while(true) {
+    if (!file_exists($filename)) {
+      $f = fopen($filename, 'w');
+      fwrite($f, $answer);
+      fclose($f);
+      $result = true;
+      break;
+    }
+
+    if (($lastResponse + TIMEOUT) < time())
+      break;
+
+    sleep(1);
+  }
+  return $result;
+} // setAnswer
+//-----------------------------------------------------
+
 function getStatus($in) {
 
-  $result = array('result' => '');
+  $result = array('result' => NULL);
 
   if (array_key_exists('token', $in)) {
-    sendCommand($in['token'], 'getStatus');
-    sleep(1);
-    $result['result'] = getAnswer($in['token']);
+    if (sendCommand($in['token'], 'getStatus'))
+      $result['result'] = getAnswer($in['token']);
   }
 
   return $result;
@@ -186,8 +259,9 @@ function setCurrPage($in) {
 
   $result = array('result' => '');
 
-  if ((array_key_exists('token', $in)) && (array_key_exists('currPage', $in))) {
-
+  if ((array_key_exists('token', $in)) && (array_key_exists('currPage', $in)) && (array_key_exists('pageNum', $in))) {
+    if (sendCommand($in['token'], 'setCurrPage,'.$in['currPage'].','.$in['pageNum']))
+      $result['result'] = getAnswer($in['token']);
   }
 
   return $result;
@@ -200,7 +274,8 @@ function getNextPage($in) {
   $result = array('result' => '');
 
   if (array_key_exists('token', $in)) {
-
+    if (sendCommand($in['token'], 'getNextPage'))
+      $result['result'] = getAnswer($in['token']);
   }
 
   return $result;
@@ -213,7 +288,8 @@ function collect($in) {
   $result = array('result' => '');
 
   if (array_key_exists('token', $in)) {
-
+    if (sendCommand($in['token'], 'collect'))
+      $result['result'] = getAnswer($in['token']);
   }
 
   return $result;

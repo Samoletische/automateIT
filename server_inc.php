@@ -27,7 +27,7 @@ class Storage {
     	// запрос на проверку уже существующей записи
     	$where = '';
     	// собираем условия для проверки
-    	foreach ($result['parentElement']['values'] as $value) {
+      foreach ($result['paramsValues'] as $value) {
         foreach ($record as $fields) {
           if ($value['fieldName'] != $fields['name'])
             continue;
@@ -35,11 +35,11 @@ class Storage {
           $where .= $value['fieldName']."='".$fields['value']."'";
         }
       }
-    	$queryStr = 'SELECT 1 FROM '.$result['pageName'].' WHERE '.$where;
-    	//echo $queryStr;
+      $queryStr = 'SELECT 1 FROM '.$result['pageName'].' WHERE '.$where;
+    	echo $queryStr;
     	$query = $db->query($queryStr);
     	if (!$query) {
-        //echo "Ошибка БД: ".$db->error;
+        echo "Ошибка БД 1: ".$db->error;
         return false;
     	}
     	// если запись уже есть
@@ -55,10 +55,10 @@ class Storage {
       	$values .= $res['value']."'";
     	}
     	$queryStr = 'INSERT INTO '.$result['pageName'].'('.$fields.') VALUES('.$values.')';
-    	//echo $queryStr."\n";
+    	echo $queryStr."\n";
     	$query = $db->query($queryStr);
     	if (!$query) {
-        //echo "Ошибка БД: ".$db->error;
+        echo "Ошибка БД 2: ".$db->error;
         return false;
       }
     }

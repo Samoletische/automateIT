@@ -10,10 +10,8 @@ $webJSON = System::SendRequest($server.'/start.php?', array('command' => 'getJSO
 if ($webJSON !== NULL) {
   $web = new Web($webJSON);
   //print_r($webJSON);
-  if ($web !== NULL) {
-    sleep(3);
+  if ($web !== NULL)
     $web->collect();
-  }
 }
 else
   echo "bad enter JSON\n";

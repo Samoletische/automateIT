@@ -3,8 +3,14 @@
 namespace Facebook\WebDriver;
 
 use Facebook\WebDriver\Remote\DesiredCapabilities;
+use Facebook\WebDriver\Remote\WebDriverCapabilityType;
+use Facebook\WebDriver\Remote\WebDriverBrowserType;
 use Facebook\WebDriver\Remote\RemoteWebDriver;
+
 use Facebook\WebDriver\Interactions\WebDriverActions;
+
+use Facebook\WebDriver\Exception\TimeOutException;
+use Facebook\WebDriver\Exception\UnrecognizedExceptionException;
 
 require_once('../lib/vendor/autoload.php');
 //-----------------------------------------------------
@@ -89,13 +95,19 @@ class Web {
 
     while (true) {
       foreach($this->spiders as $spider) {
+        if ($currPage == '')
+          break;
         echo "getStatus\n";
         $status = $this->sendCommandToSpider($spider, 'getStatus');
-        echo $status."\n";
+        echo "'".$status."'\n";
         if ($status == 'ready') {
           $pageNum++;
-          $this->sendCommandToSpider($spider, 'setCurrPage', array('currPage' => $currPage));
+          echo 'setCurrPage: '.$currPage."\n";
+          $this->sendCommandToSpider($spider, 'setCurrPage', array('currPage' => $currPage, 'pageNum' => $pageNum));
+          echo "getNextPage\n";
           $currPage = $this->sendCommandToSpider($spider, 'getNextPage');
+          echo "'".$currPage."'\n";
+          echo "collect\n";
           $this->sendCommandToSpider($spider, 'collect');
           $lastResponse = time();
         }
@@ -132,64 +144,44 @@ class Web {
 
 class Spider {
 
+  const PAGE_LOAD_TIMEOUT = 3; // in seconds
+
   private $driver;
+  private $wait;
   private $currPage;
   private $currPageNum;
-  private $result;
   private $status; // 'ready', 'collecting', 'processing', 'storaging'
   private $token;
 
-  private $storageMethod;
-  private $parentElement;
-  private $childElements;
-  private $childPages;
-  private $pagination;
-  private $process;
+  private $params; // enter data
+  private $result; // outer data
+  // private $parentElement;
+  // private $childElements;
+  // private $childPages;
+  // private $pagination;
+  // private $process;
   //-----------------------------------------------------
 
   function __construct($token, $params) {
     global $serverSelenium;
 
-    $this->status                 = 'ready';
-    $this->token                  = $token;
-    $this->result                 = array();
+    $this->status = 'ready';
+    $this->token  = $token;
 
-    if (array_key_exists('pageName', $params))
-      $this->eraseResult($params['pageName']);
-    else
+    if ((!array_key_exists('pageName', $params))
+      || (!array_key_exists('storage', $params))
+      || (!array_key_exists('parentElement', $params))
+      || (!array_key_exists('childElements', $params))
+      || (!array_key_exists('childPages', $params))
+      || (!array_key_exists('pagination', $params))
+      || (!array_key_exists('process', $params)))
       return NULL;
 
-    if (array_key_exists('storage', $params))
-      $this->storage              = $params['storage'];
-    else
-      return NULL;
+    $this->params = $params;
+    $this->driver = NULL;
+    $this->wait   = NULL;
 
-    if (array_key_exists('parentElement', $params))
-      $this->parentElement        = $params['parentElement'];
-    else
-      return NULL;
-
-    if (array_key_exists('childElements', $params))
-      $this->childElements        = $params['childElements'];
-    else
-      return NULL;
-
-    if (array_key_exists('childPages', $params))
-      $this->childPages           = $params['childPages'];
-    else
-      return NULL;
-
-    if (array_key_exists('pagination', $params))
-      $this->pagination           = $params['pagination'];
-    else
-      return NULL;
-
-    if (array_key_exists('process', $params))
-      $this->process              = $params['process'];
-    else
-      return NULL;
-
-    $this->driver               = RemoteWebDriver::create($serverSelenium, DesiredCapabilities::chrome());
+    $this->eraseResult($this->result, $this->params['pageName']);
 } // __construct
   //-----------------------------------------------------
 
@@ -197,8 +189,8 @@ class Spider {
     global $closeAfteFinish;
 
     if ($closeAfteFinish && $this->driver) {
-      $this->driver->quit();
       $this->driver->close();
+      $this->driver->quit();
     }
   } // _destruct
   //-----------------------------------------------------
@@ -209,25 +201,72 @@ class Spider {
   } // ReadyToUse
   //-----------------------------------------------------
 
-  public function setCurrPage($page) {
+  public function setCurrPage($page, $pageNum) {
     $this->currPage = $page;
+    $this->currPageNum = $pageNum;
+    return true;
   } // setCurrPage
   //-----------------------------------------------------
 
+  private function initDriver() {
+    global $serverSelenium;
+
+    $capabilities = array(
+      WebDriverCapabilityType::BROWSER_NAME => WebDriverBrowserType::CHROME,
+      WebDriverCapabilityType::PLATFORM => WebDriverPlatform::ANY
+    );
+    if ($this->params['proxyServer'] != '')
+      $capabilities = array_merge($capabilities, array(
+        WebDriverCapabilityType::PROXY => array(
+          'proxyType' => 'manual',
+          'httpProxy' => $this->params['proxyServer'],
+          'sslProxy' => $this->params['proxyServer']
+        )
+      ));
+    //$this->driver = RemoteWebDriver::create($serverSelenium, DesiredCapabilities::chrome());
+    $driver = RemoteWebDriver::create($serverSelenium, $capabilities);
+    $this->wait = new WebDriverWait($this->driver, 10);
+    $this->driver->manage()->timeouts()->pageLoadTimeout(self::PAGE_LOAD_TIMEOUT);
+    //$this->driver = RemoteWebDriver::create($serverSelenium, $capabilities);
+    try {
+      $this->currPage = $this->driver->get($this->currPage);
+    } catch (TimeOutException $te) {
+    }
+  } // initDriver
+  //-----------------------------------------------------
+
   // getNextPage()
-  //  Функция возвращает ссылку на следующую страницу по параметрам пагинатора
+  //  Функция возвращает ссылку на следующую страницу по параметрам пагинатора (только с пагинатором)
   //  В случае отсутствия элемента со ссылкой на следующую страницу возвращается пустая строка
+  //  Для страниц с прокруткой вернёт пустую страницу.
   public function getNextPage() {
+
     $page = '';
-    $links = $this->driver->findElements(WebDriverBy::cssSelector($this->pagination['cssSelector']));
-    //$c = 3;
+
+    if ($this->driver === NULL)
+      $this->initDriver();
+
+    $pagination = $this->params['pagination'];
+    if ((!array_key_exists('cssSelector', $pagination))
+      || (!array_key_exists('nextPage', $pagination))
+      || (!array_key_exists('valueAttr', $pagination))
+      || (!array_key_exists('events', $pagination)))
+      return $page;
+
+    if (($pagination['cssSelector'] == '')
+      || ($pagination['nextPage'] == '')
+      || ($pagination['valueAttr'] == ''))
+      return $page;
+
+    $links = $this->driver->findElements(WebDriverBy::cssSelector($pagination['cssSelector']));
     foreach ($links as $link) {
-      $nextPage = $this->getExistingElement($link, $this->pagination['nextPage']);
+      $nextPage = $this->getExistingElement($link, $pagination['nextPage']);
       if ($nextPage) {
-        $this->doEvents($nextPage, $this->pagination['events']);
-        $page = $nextPage->getAttribute($this->pagination['valueAttr']);
+        $this->doEvents($nextPage, $pagination['events'], $this->params);
+        $page = $nextPage->getAttribute($pagination['valueAttr']);
       }
     }
+
     return $page;
   } // getNextPage
   //-----------------------------------------------------
@@ -237,12 +276,12 @@ class Spider {
   } // getStatus
   //-----------------------------------------------------
 
-  public function collect($pageNum) {
+  public function collect() {
     $this->status = 'collecting';
     // $pcurrPage = $this->currPage;
     // $lastPage = '';
     // $maxPagesCollect = $this->maxPagesCollect == 0 ? 100 : $this->maxPagesCollect;
-    $this->currPageNum = $pageNum;
+    // $this->currPageNum = $pageNum;
 
     if ($this->currPage == '') {
       $this->status = 'complete';
@@ -250,7 +289,14 @@ class Spider {
     }
 
     // collect
-    $this->collectFromPage($this->currPage);
+    try {
+      if (!$this->collectFromPage($this->params, $this->result, 0))
+        return NULL;
+    } catch (Exception $ex) {
+      return NULL;
+    } catch (Error $er) {
+      return NULL;
+    }
 
     // process
     if ($this->status == 'error')
@@ -268,56 +314,177 @@ class Spider {
     if ($this->status == 'error')
       return;
     else {
-      $this->eraseResult($result['pageName']);
+      $this->eraseResult($this->result, $this->params['pageName']);
       $this->status = 'complete';
     }
+
+    return true;
   } // collect
   //-----------------------------------------------------
 
-  private function eraseResult($pageName) {
-    $this->result['pageName']   = $pageName;
-    $this->result['values']     = array();
-    $this->result['childPages'] = array();
+  private function eraseResult(&$result, $pageName) {
+    $result = array();
+    $result['pageName']   = $pageName;
+    $result['values']     = array();
+    $result['childPages'] = array();
   } // eraseResult
   //-----------------------------------------------------
 
-  private function collectFromPage($page, $childPage = false, $num = 0) {
-    // 1. get parent element
-    $this->currPage = $this->driver->get($page);
-    $parentElement = $childPage ? $this->childPages[$num]['parentElement'] : $this->parentElement;
-    $links = $this->driver->findElements(WebDriverBy::cssSelector($parentElement['cssSelector']));
-    //$c = 3;
-    foreach ($links as $link) {
-      $errorMessage = '';
-      $valueNum = count($this->result['values']);
-      // 1. a) do events
-      $this->doEvents($link, $parentElement['events']);
-      $childElements = $childPage ? $this->childPages[$num]['childElements'] : $this->childElements;
-      // 1. b) get data
-      $this->getValues($link, $parentElement['values'], $valueNum);
-      // 1. c) get data from child page
+  private function collectFromPage(&$params, &$result, $valueNum=NULL) {
 
-      // 2. collect data from elements
-      foreach ($childElements['elements'] as $element) {
-        $childLink = $this->getExistingElement($link, $element['cssSelector']);
-        if (!$childLink) {
-          $errorMessage .= $errorMessage == '' ? '' : '; ';
-          $errorMessage .= "find child error: $e";
-          continue;
-        }
-        // 2. a) do events
-        $this->doEvents($childLink, $element['events']);
-        // 2. b) get data
-        $this->getValues($childLink, $element['values'], $valueNum);
-        // 2. c) get data from child page
+    if ($this->driver === NULL)
+      $this->initDriver();
 
+    $scrollPage = false;
+    foreach ($params['pagination']['events'] as $event)
+      if ($event == 'scrollTo') {
+        $scrollPage = true;
+        break;
       }
-      //$c--;
 
-      $this->result['values'][$valueNum][] = array( 'name' => 'error', 'value' => $errorMessage );
+    echo "pageName=".$params['pageName']."\n";
+    //print_r($params);
+
+    try {
+      // 1. get parent element
+      if ($valueNum === NULL)
+        $valueNum = count($result['values']);
+      $parentElement = $params['parentElement'];
+      echo "parent css: ".$parentElement['cssSelector']."\n";
+      while (true) {
+        $links = $this->driver->findElements(WebDriverBy::cssSelector($parentElement['cssSelector']));
+        if (count($links) == 0) {
+          $result['values'][$valueNum][] = array( 'name' => 'error', 'value' => "parent elements by '".$parentElement['cssSelector']."' not found" );
+          return true;
+        }
+
+        // for pagination with scroll event
+        if ($scrollPage) {
+          $currItemIndex = $params['currItemIndex'];
+          $count = count($links);
+          $params['currItemIndex'] = $count;
+        }
+
+        echo "count of Links: ".$count."\n";
+        $c = 1;
+
+        for ($index = $currItemIndex; $index < $count; $index++) {
+        //foreach ($links as $index => $link) {
+
+          // if ($index < $currItemIndex)
+          //   continue;
+
+          $errorMessage = '';
+          // 1. a) do events
+          $this->doEvents($link, $parentElement['events'], $params);
+          $childElements = $params['childElements'];
+          // 1. b) get data
+          echo "values of parentElement:\n";
+          print_r($parentElement['values']);
+          $this->getValues($link, $parentElement['values'], $valueNum, $result);
+          // 1. c) get data from child page
+
+          // 2. collect data from elements
+          foreach ($childElements['elements'] as $element) {
+            $childLink = $this->getExistingElement($link, $element['cssSelector']);
+            if (!$childLink) {
+              $errorMessage .= $errorMessage == '' ? '' : '; ';
+              $errorMessage .= "find child elements error: ";
+              continue;
+            }
+            // 2. a) do events
+            $this->doEvents($childLink, $element['events'], $params);
+            // 2. b) get data
+            $this->getValues($childLink, $element['values'], $valueNum, $result);
+            // 2. c) get data from child page
+          }
+
+          $c++;
+
+          // 3. collect from child pages
+          foreach ($parentElement['childPages'] as $childPageIndex => $childPage) {
+
+            // get href of child page
+            $childPagelink = $this->getExistingElement($link, $childPage['cssSelector']);
+            if (!$childPagelink) {
+              $errorMessage .= $errorMessage == '' ? '' : '; ';
+              $errorMessage .= "find child pages error: ";
+              continue;
+            }
+            if ($childPage['attr'] == 'text')
+              $href = $childPagelink->getText();
+            else
+              $href = $childPagelink->getAttribute($childPage['attr']);
+
+            echo "child href: $href\n";
+
+            // find params for child page
+            $childParams = NULL;
+            foreach ($params['childPages'] as $childPageParams) {
+              echo $childPageParams['pageName']." - ".$childPage['pageName']."\n";
+              if ($childPageParams['pageName'] == $childPage['pageName']) {
+                $childParams = $childPageParams;
+                break;
+              }
+            }
+
+            if ($childParams !== NULL) {
+              // create new tab this new URL by href and switch to it
+              $oldTab = $this->driver->getWindowHandle();
+              echo "oldTab handle: ".$oldTab."\n";
+              $this->driver->ExecuteScript("window.open('".$href."','_blank');");
+              $tabs = $this->driver->getWindowHandles();
+              $newTab = $tabs[count($tabs) - 1]; // если возвращаются в порядке открытия
+              echo "newTab handle: ".$newTab."\n";
+              $this->driver->switchTo()->window($newTab);
+
+              // prepare results and collect
+              echo $params['storage']['method']."-".$childParams['storage']['method']."\n";
+              if (($params['storage']['method'] == "DB") && ($childParams['storage']['method'] == "DB")) {
+                $storageParent = explode('?', $params['storage']['param']);
+                $storageChild = explode('?', $childParams['storage']['param']);
+
+                echo $storageParent[0]."-".$storageChild[0]."\n";
+                if ($storageParent[0] == $storageChild[0])
+                  $childResult = &$result;
+                else {
+                  $childResult = &$result["childPages"][$childPageIndex];
+                  $this->eraseResult($childResult, $childParams['pageName']);
+                }
+
+                echo "collect from child page\n";
+                $this->collectFromPage($childParams, $childResult, $valueNum);
+              }
+
+              $this->driver->close();
+              $this->driver->switchTo()->window($oldTab);
+            }
+          }
+
+          //$result['values'][$valueNum++][] = array( 'name' => 'error', 'value' => $errorMessage );
+          $valueNum++;
+
+          if (++$params['currItemsCollect'] >= $params['maxItemsCollect'])
+            break;
+        }
+
+        if ($scrollPage)
+          $this->scrollToNextPage();
+        else
+          break;
+      }
+    } catch (UnrecognizedExceptionException $uee) {
+      return NULL;
     }
-    // 3. go to next page
-  } // collect
+    return true;
+    // echo "results of ".$params['pageName'].":\n";
+    // print_r($result);
+  } // collectFromPage
+  //-----------------------------------------------------
+
+  function scrollToNextPage() {
+    $this->driver->executeScript("arguments[0].scrollIntoView();", webElement);
+  } // scrollToNextPage
   //-----------------------------------------------------
 
   private function getExistingElement($link, $cssSelector) {
@@ -348,13 +515,14 @@ class Spider {
   //-----------------------------------------------------
 
   private function process() {
+    echo "process\n";
     $this->status = 'processing';
-    $this->processResult($this->result);
+    $this->processResult($this->params, $this->result);
   } // process
   //-----------------------------------------------------
 
-  private function processResult(&$result) {
-    foreach ($this->process as $process) {
+  private function processResult($params, &$result) {
+    foreach ($params['process'] as $process) {
       foreach ($result['values'] as &$record) {
         foreach ($record as &$field) {
           if ($field['name'] != $process['fieldName'])
@@ -383,22 +551,25 @@ class Spider {
         }
       }
     }
+    foreach ($params['childPages'] as $childPageIndex => $childPage)
+      $this->processResult($childPage, $result['childPages'][$childPageIndex]);
   } // processResult
   //-----------------------------------------------------
 
   private function storage() {
+    echo "storaging\n";
     $this->status = 'storaging';
     $this->storageResult($this->result);
   } // storage
   //-----------------------------------------------------
 
   private function storageResult($result) {
-    switch ($this->storage['method']) {
+    switch ($this->params['storage']['method']) {
       case "JSON":
         $json = json_encode($result);
         if (json_last_error() === JSON_ERROR_NONE) {
-          $path = substr($this->storage['param'], strlen($this->storage['param']) - 1, 1) == '/' ? '' : '/';
-          $path = $this->storage['param'].$path.$result['pageName']."_p".$this->currPageNum.".json";
+          $path = substr($this->params['storage']['param'], strlen($this->params['storage']['param']) - 1, 1) == '/' ? '' : '/';
+          $path = $this->params['storage']['param'].$path.$result['pageName']."_p".$this->currPageNum.".json";
           $f = fopen($path, 'w');
           if ($f) {
             fwrite($f, $json);
@@ -410,7 +581,21 @@ class Spider {
         break;
       case "DB":
         $storageURL = 'http://192.168.0.20/automateIT/storage.php?';
-        $result['parentElement'] = $this->parentElement;
+
+        // prepare storage.json
+        $result['paramsValues'] = array();
+        $result['paramsValues'] = array_merge($result['paramsValues'], $this->params['parentElement']['values']);
+        foreach($this->params['childElements']['elements'] as $element)
+          $result['paramsValues'] = array_merge($result['paramsValues'], $element['values']);
+        foreach($this->params['childPages'] as $element) {
+          // сделать проверку на совпадение имён таблиц БД
+          $result['paramsValues'] = array_merge($result['paramsValues'], $element['parentElement']['values']);
+          // пробежаться по childElements
+          // пробежаться по childPages ???
+        }
+
+        echo "send to storage:\n";
+        print_r($result);
         $echo = file_get_contents($storageURL, false, stream_context_create(array(
           'http' => array(
             'method' => 'POST',
@@ -418,7 +603,7 @@ class Spider {
             'content' => json_encode($result)
           )
         )));
-        echo $echo;
+        echo "storage return:\n".$echo;
         break;
     }
   } // storageResult
@@ -429,17 +614,17 @@ class Spider {
   } // getRandomWait
   //-----------------------------------------------------
 
-  private function doEvents($link, $events) {
+  private function doEvents($link, $events, &$params) {
     foreach ($events as $event) {
       if ($event == '')
         continue;
-      if ($this->parentElement['waitBetweenEvents'])
+      if ($params['parentElement']['waitBetweenEvents'])
         usleep($this->getRandomDelay());
       switch ($event) {
         case 'click':
           $actions = new WebDriverActions($this->driver);
           $actions->moveToElement($link, 10, 5);
-          if ($this->parentElement['waitBetweenEvents'])
+          if ($params['parentElement']['waitBetweenEvents'])
             usleep(500000);
           $link->click();
           break;
@@ -453,13 +638,19 @@ class Spider {
   } // doEvents
   //-----------------------------------------------------
 
-  private function getValues($link, $values, $valueNum) {
+  private function getValues($link, $values, $valueNum, &$result) {
     foreach ($values as $value) {
       try {
-        $this->result['values'][$valueNum][] = array(
+        if ($value['attr'] == 'text')
+          $val = $link->getText();
+        else
+          $val = $link->getAttribute($value['attr']);
+        $result['values'][$valueNum][] = array(
           'name' => $value['fieldName'],
-          'value' => $link->getAttribute($value['attr'])
+          'value' => $val
         );
+        echo "current value: ".$value['fieldName']."\n";
+        print_r($result['values'][$valueNum]);
       } catch (NoSuchElementException $e) {
         continue;
       }
