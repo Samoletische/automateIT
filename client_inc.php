@@ -224,7 +224,7 @@ class Spider {
         )
       ));
     //$this->driver = RemoteWebDriver::create($serverSelenium, DesiredCapabilities::chrome());
-    $driver = RemoteWebDriver::create($serverSelenium, $capabilities);
+    $this->driver = RemoteWebDriver::create($serverSelenium, $capabilities);
     $this->wait = new WebDriverWait($this->driver, 10);
     $this->driver->manage()->timeouts()->pageLoadTimeout(self::PAGE_LOAD_TIMEOUT);
     //$this->driver = RemoteWebDriver::create($serverSelenium, $capabilities);
@@ -330,7 +330,7 @@ class Spider {
   } // eraseResult
   //-----------------------------------------------------
 
-  private function collectFromPage(&$params, &$result, $valueNum=NULL) {
+  private function collectFromPage($params, &$result, $valueNum=NULL) {
 
     if ($this->driver === NULL)
       $this->initDriver();
@@ -342,6 +342,10 @@ class Spider {
         break;
       }
 
+    $firstItemIndex = $params['firstItemIndex'];
+    $maxItemsCollect = $params['maxItemsCollect'];
+    $count_last = 0;
+
     echo "pageName=".$params['pageName']."\n";
     //print_r($params);
 
@@ -352,28 +356,46 @@ class Spider {
       $parentElement = $params['parentElement'];
       echo "parent css: ".$parentElement['cssSelector']."\n";
       while (true) {
-        $links = $this->driver->findElements(WebDriverBy::cssSelector($parentElement['cssSelector']));
-        if (count($links) == 0) {
+        //$links = $this->driver->findElements(WebDriverBy::cssSelector($parentElement['cssSelector']));
+        $links = $this->getExistingElements($this->driver, $parentElement['cssSelector']);
+        if (!$links) {
+          echo "find parent elements error\n";
+          break;
+        }
+
+        $count = count($links);
+        echo "count of Links: ".$count."\n";
+
+        if ($count == 0) {
           $result['values'][$valueNum][] = array( 'name' => 'error', 'value' => "parent elements by '".$parentElement['cssSelector']."' not found" );
           return true;
         }
 
+        $currItemIndex = $firstItemIndex;
+
         // for pagination with scroll event
         if ($scrollPage) {
-          $currItemIndex = $params['currItemIndex'];
-          $count = count($links);
-          $params['currItemIndex'] = $count;
+          if ($count == $count_last)
+            break;
+          echo "for scroll, $count_last - $count - $firstItemIndex\n";
+          $count_last = $count;
+          if ($count > $firstItemIndex) {
+            echo "befor $firstItemIndex - ";
+            $firstItemIndex = $count;
+            echo "after $firstItemIndex\n";
+          }
         }
 
-        echo "count of Links: ".$count."\n";
-        $c = 1;
+        $finishIndex = $currItemIndex + $maxItemsCollect;
+        echo "scrollPage=$scrollPage, currItemIndex=$currItemIndex, finishIndex=$finishIndex\n";
 
-        for ($index = $currItemIndex; $index < $count; $index++) {
+        for ($index = $currItemIndex; $index < $finishIndex; $index++) {
         //foreach ($links as $index => $link) {
 
-          // if ($index < $currItemIndex)
-          //   continue;
+          if ($index >= $count)
+             break;
 
+          $link = $links[$index];
           $errorMessage = '';
           // 1. a) do events
           $this->doEvents($link, $parentElement['events'], $params);
@@ -398,8 +420,6 @@ class Spider {
             $this->getValues($childLink, $element['values'], $valueNum, $result);
             // 2. c) get data from child page
           }
-
-          $c++;
 
           // 3. collect from child pages
           foreach ($parentElement['childPages'] as $childPageIndex => $childPage) {
@@ -463,13 +483,17 @@ class Spider {
 
           //$result['values'][$valueNum++][] = array( 'name' => 'error', 'value' => $errorMessage );
           $valueNum++;
+          --$maxItemsCollect;
 
-          if (++$params['currItemsCollect'] >= $params['maxItemsCollect'])
-            break;
         }
 
-        if ($scrollPage)
-          $this->scrollToNextPage();
+        echo "for ended, index=$index, maxItemsCollect=$maxItemsCollect\n";
+        if ($maxItemsCollect <= 0)
+          break;
+
+        if ($scrollPage) {
+          $this->scrollToNextPage($links);
+        }
         else
           break;
       }
@@ -482,8 +506,17 @@ class Spider {
   } // collectFromPage
   //-----------------------------------------------------
 
-  function scrollToNextPage() {
-    $this->driver->executeScript("arguments[0].scrollIntoView();", webElement);
+  private function scrollToNextPage($links) {
+    // $elements = $this->driver->findElements(WebDriverBy::cssSelector($params['pagination']['cssSelector']));
+    // echo "result elements=";
+    // print_r($elements);
+    $count = count($links);
+    $this->driver->executeScript("arguments[0].scrollIntoView();", array($links[$count - 1]));
+    // $this->driver->executeScript("arguments[0].style.display='block';
+    //   alert('class=' + arguments[0].getAttribute('class'));
+    //   alert('innerText=' + arguments[0].innerText);
+    //   alert('display=' + arguments[0].style.display);", array($links[$count - 1]));
+    sleep(2);
   } // scrollToNextPage
   //-----------------------------------------------------
 
@@ -497,6 +530,19 @@ class Spider {
         break;
     }
     return count($elements) == 0 ? false : $elements[0];
+  } // getExistingElement
+  //-----------------------------------------------------
+
+  private function getExistingElements($link, $cssSelector) {
+    $i = 10; // в общей сложности ждём 5 секунд с периодом по 500 милисекунд
+    while ($i-- > 0) {
+      $elements = $link->findElements(WebDriverBy::cssSelector($cssSelector));
+      if (count($elements) == 0)
+        usleep(500000);
+      else
+        break;
+    }
+    return count($elements) == 0 ? false : $elements;
   } // getExistingElement
   //-----------------------------------------------------
 
