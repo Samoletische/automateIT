@@ -1,5 +1,5 @@
 <?php
-namespace Facebook\WebDriver;
+//namespace Facebook\WebDriver;
 
 require_once('client_inc.php');
 
@@ -72,7 +72,8 @@ if (isset($argv)) { // запуск готового Сборщика из ко�
             // получаем параметры команды
             $commandParams = explode(',', $command);
             $method = $commandParams[0];
-            echo date('h:i:s')." - command params: ".print_r($commandParams)."\n";
+            echo date('h:i:s')." - command params: ";
+            print_r($commandParams)."\n";
             // если метод существует, то вызываем его
             if (method_exists($spider, $method)) {
               switch ($method) {

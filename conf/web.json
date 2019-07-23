@@ -1,0 +1,32 @@
+{
+  "pageName": "",
+  "proxyServer": "",
+  "startPage": "",
+  "maxPagesCollect": "",
+  "firstItemIndex": 0,
+  "maxItemsCollect": 0,
+  "storage": {"method": "", "param": "", "overwrite": false},
+  "parentElement": {
+    "waitBetweenEvents": false,
+    "waitWhenEnterText": false,
+    "cssSelector": "",
+    "filter": [],
+    "events": [],
+    "values": [],
+    "childPages": []
+  },
+  "childElements": {
+    "waitBetweenEvents": false,
+    "waitWhenEnterText": false,
+    "elements": []
+  },
+  "pagination": {
+    "cssSelector": "",
+    "nextPage": "",
+    "filter": [],
+    "events": [],
+    "valueAttr": ""
+  },
+  "process": [],
+  "childPages": []
+}

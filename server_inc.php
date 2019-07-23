@@ -16,8 +16,9 @@ class WebServer {
 }
 //-----------------------------------------------------
 
-class Storage {
-  public static function save($result) {
+abstract class Storage {
+
+  static function save($result) {
     global $serverDB, $userDB, $passwordDB, $nameDB;
 
     $db = mysqli_connect($serverDB, $userDB, $passwordDB, $nameDB);
@@ -88,8 +89,9 @@ class Storage {
     }
 
     return true;
-  }
+  } // Storage::save
   //-----------------------------------------------------
-}
+
+} // Storage
 //-----------------------------------------------------
 ?>

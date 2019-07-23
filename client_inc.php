@@ -1,6 +1,8 @@
 <?php
 
-namespace Facebook\WebDriver;
+use Facebook\WebDriver\WebDriverPlatform;
+use Facebook\WebDriver\WebDriverWait;
+use Facebook\WebDriver\WebDriverBy;
 
 use Facebook\WebDriver\Remote\DesiredCapabilities;
 use Facebook\WebDriver\Remote\WebDriverCapabilityType;
@@ -24,17 +26,18 @@ require_once('conf_c.php');
 // ini_set('display_errors', 1);
 // ini_set('display_startup_errors', 1);
 
-class System {
+abstract class System {
+
   // sendRequest
   //  Кодирует получаемый через параметр контент, отправляет его в формате JSON
   //  в php-скрипт, адрес которого передан через параметр
   //  Параметры:
-  //    $url - адресная строка до php-скрипта
-  //    $content - параметризированный массив
+  //    $url      - string  - адресная строка до php-скрипта
+  //    $content  - array   - параметризированный массив
   //  Возвращаемые значения:
-  //    Ответ от php-скрипта в формате JSON.
+  //    array - ответ от php-скрипта в виде параметризированного массива.
   //    Если входящий контент или ответ невозможно кодировать в/декодировать из JSON, то возвращается NULL.
-  public static function sendRequest($url, $content) {
+  static function sendRequest($url, $content) {
     $json = json_encode($content);
 
     if (json_last_error() === JSON_ERROR_NONE) {
@@ -52,8 +55,78 @@ class System {
     }
     else
       return NULL;
-  }
-}
+  } // System::sendRequest
+  //-----------------------------------------------------
+
+  // createWeb
+  //  Создаёт экземпляр класса Web, предварительно проверив файл параметров типа web.json
+  //  на корректность структуры.
+  //  Параметры:
+  //    $params   - array   - параметризированный массив
+  //    $error    - string  - при возникновении ошибки сюда запишется её текст
+  //  Возвращаемые значения:
+  //    Web - объект, если ошибок не было.
+  //    Если были ошибки (проблемы с файлом настроек), то возвращается NULL.
+  static function createWeb($params, &$error='') {
+
+    global $webJsonEthalon;
+
+    if (!file_exists($webJsonEthalon)) {
+      $error = "Ethalon web.json file '$webJsonEthalon' not exists";
+      return NULL;
+    }
+
+    $ethalon = json_decode(file_get_contents($webJsonEthalon), true);
+    if (json_last_error() !== JSON_ERROR_NONE) {
+      $error = "Can't load ethalon web.json file '$webJsonEthalon'. Bad JSON format.";
+      return NULL;
+    }
+
+    // check for nessesary fields in JSON
+    if ((empty($params)) || (!is_array($params))
+        || (empty($ethalon)) || (!is_array($ethalon))) {
+      $error = 'Bad web.json structure';
+      return NULL;
+    }
+
+    $firstNotExistingField = '';
+    if (!System::checkJsonStructure($ethalon, $params, $firstNotExistingField)) {
+      $error = "Bad web.json structure: not exists '$firstNotExistingField' field";
+      return NULL;
+    }
+
+    return new Web($params);
+
+  } // System::createWeb
+  //-----------------------------------------------------
+
+  // checkJsonStructure
+  //  Сравнивает две структуры файлов типа web.json. Одна структура эталонная, другая - проверяемая.
+  //  Параметры:
+  //    $ethalon                - array   - параметризированный массив эталонной структуры
+  //    $check                  - array   - параметризированный массив проверяемой структуры
+  //    $firstNotExistingField  - string  - при отсутствии в проверяемой структуре поля из эталонной
+  //                                        сюда запишется его (поля) имя
+  //  Возвращаемые значения:
+  //    bool - флаг идентичности структур.
+  static function checkJsonStructure($ethalon, $check, &$firstNotExistingField) {
+
+    foreach ($ethalon as $key => $value) {
+      if (!array_key_exists($key, $check)) {
+        $firstNotExistingField = $key;
+        return false;
+      }
+      if (is_array($ethalon[$key]))
+        if (!self::checkJsonStructure($ethalon[$key], $check[$key], $firstNotExistingField))
+          return false;
+    }
+
+    return true;
+
+  } // System::checkJsonStructure
+  //-----------------------------------------------------
+
+} // System
 //-----------------------------------------------------
 
 class Web {
@@ -68,6 +141,7 @@ class Web {
   function __construct($params) {
     global $spiders, $serverSelenium;
 
+    // spiders initialization
     $this->spiders = array();
     foreach($spiders as $token => $url) {
       $result = System::sendRequest($url, array('command' => 'areYouReady', 'token' => $token, 'params' => $params));
@@ -82,13 +156,13 @@ class Web {
 
     $this->startPage            = $params['startPage'];
     $this->maxPagesCollect      = $params['maxPagesCollect'];
-  } // __construct
+  } // Web::__construct
   //-----------------------------------------------------
 
   function __destruct() {
     foreach($this->spiders as $spider)
       unset($spider);
-  } // __destruct
+  } // Web::__destruct
   //-----------------------------------------------------
 
   public function collect() {
@@ -122,7 +196,7 @@ class Web {
 
       sleep(1);
     }
-  } // collect
+  } // Web::collect
   //-----------------------------------------------------
 
   private function sendCommandToSpider($spider, $command, $additionParams=NULL) {
@@ -134,13 +208,13 @@ class Web {
     if (($answer !== NULL) && (array_key_exists('result', $answer)))
       $result = $answer['result'];
     return $result;
-  } // sendCommandToSpider
+  } // Web::sendCommandToSpider
   //-----------------------------------------------------
 
   public function printResult() {
     if ($this->spiders[0]->getStatus() == "complete")
       $this->spiders[0]->printResult();
-  } // printResult
+  } // Web::printResult
   //-----------------------------------------------------
 
 } // Web
@@ -186,7 +260,7 @@ class Spider {
     $this->wait   = NULL;
 
     $this->eraseResult($this->result, $this->params['pageName']);
-} // __construct
+} // Spider::__construct
   //-----------------------------------------------------
 
   function __destruct() {
@@ -196,20 +270,20 @@ class Spider {
       $this->driver->close();
       $this->driver->quit();
     }
-  } // _destruct
+  } // Spider::_destruct
   //-----------------------------------------------------
 
   public function ReadyToUse() {
     // проверка на доступность Selenium'а
     return true;
-  } // ReadyToUse
+  } // Spider::ReadyToUse
   //-----------------------------------------------------
 
   public function setCurrPage($page, $pageNum) {
     $this->currPage = $page;
     $this->currPageNum = $pageNum;
     return true;
-  } // setCurrPage
+  } // Spider::setCurrPage
   //-----------------------------------------------------
 
   private function initDriver() {
@@ -241,7 +315,7 @@ class Spider {
       echo 'catch current URL - '."\n";
       echo $this->driver->getTitle()."\n";
     }
-  } // initDriver
+  } // Spider::initDriver
   //-----------------------------------------------------
 
   // getNextPage()
@@ -277,12 +351,12 @@ class Spider {
     }
 
     return $page;
-  } // getNextPage
+  } // Spider::getNextPage
   //-----------------------------------------------------
 
   public function getStatus() {
     return $this->status;
-  } // getStatus
+  } // Spider::getStatus
   //-----------------------------------------------------
 
   public function collect() {
@@ -328,7 +402,7 @@ class Spider {
     }
 
     return true;
-  } // collect
+  } // Spider::collect
   //-----------------------------------------------------
 
   private function eraseResult(&$result, $pageName) {
@@ -336,7 +410,7 @@ class Spider {
     $result['pageName']   = $pageName;
     $result['values']     = array();
     $result['childPages'] = array();
-  } // eraseResult
+  } // Spider::eraseResult
   //-----------------------------------------------------
 
   private function collectFromPage($params, &$result, $valueNum=NULL) {
@@ -407,13 +481,16 @@ class Spider {
 
           $link = $links[$index];
           $errorMessage = '';
+          // filters
+          if (!$this->filterIt($link, $parentElement['filter']))
+            continue;
           // 1. a) do events
-          $this->doEvents($link, $parentElement['events'], $parentElement['filter'], $params);
+          $this->doEvents($link, $parentElement['events'], $params);
           $childElements = $params['childElements'];
           // 1. b) get data
           echo "values of parentElement:\n";
           print_r($parentElement['values']);
-          $this->getValues($link, $parentElement['values'], $parentElement['filter'], $valueNum, $result);
+          $this->getValues($link, $parentElement['values'], $valueNum, $result);
           // 1. c) get data from child page
 
           // 2. collect data from elements
@@ -428,10 +505,13 @@ class Spider {
               continue;
             }
             foreach ($childLinks as $childLink) {
+              // filters
+              if (!$this->filterIt($childLink, $element['filter']))
+                continue;
               // 2. a) do events
-              $this->doEvents($childLink, $element['events'], $element['filter'], $params);
+              $this->doEvents($childLink, $element['events'], $params);
               // 2. b) get data
-              $this->getValues($childLink, $element['values'], $element['filter'], $valueNum, $result);
+              $this->getValues($childLink, $element['values'], $valueNum, $result);
             }
             // 2. c) get data from child page
           }
@@ -520,7 +600,7 @@ class Spider {
     return true;
     // echo "results of ".$params['pageName'].":\n";
     // print_r($result);
-  } // collectFromPage
+  } // Spider::collectFromPage
   //-----------------------------------------------------
 
   private function scrollToNextPage($links) {
@@ -534,7 +614,7 @@ class Spider {
     //   alert('innerText=' + arguments[0].innerText);
     //   alert('display=' + arguments[0].style.display);", array($links[$count - 1]));
     sleep(2);
-  } // scrollToNextPage
+  } // Spider::scrollToNextPage
   //-----------------------------------------------------
 
   private function getExistingElement($link, $cssSelector) {
@@ -547,7 +627,7 @@ class Spider {
         break;
     }
     return count($elements) == 0 ? false : $elements[0];
-  } // getExistingElement
+  } // Spider::getExistingElement
   //-----------------------------------------------------
 
   private function getExistingElements($link, $cssSelector) {
@@ -562,7 +642,7 @@ class Spider {
     }
     //echo date('H:i:s')." - end finding elements '$cssSelector', count={count($elements)}\n";
     return count($elements) == 0 ? false : $elements;
-  } // getExistingElement
+  } // Spider::getExistingElement
   //-----------------------------------------------------
 
   private function getCurrentDomainURL($url) {
@@ -576,14 +656,14 @@ class Spider {
         $domain = $url;
     }
     return $domain;
-  } // getCurrentDomain
+  } // Spider::getCurrentDomain
   //-----------------------------------------------------
 
   private function process() {
     echo "process\n";
     $this->status = 'processing';
     $this->processResult($this->params, $this->result);
-  } // process
+  } // Spider::process
   //-----------------------------------------------------
 
   private function processResult($params, &$result) {
@@ -637,14 +717,14 @@ class Spider {
     }
     foreach ($params['childPages'] as $childPageIndex => $childPage)
       $this->processResult($childPage, $result['childPages'][$childPageIndex]);
-  } // processResult
+  } // Spider::processResult
   //-----------------------------------------------------
 
   private function storage() {
     echo "storaging\n";
     $this->status = 'storaging';
     $this->storageResult($this->result);
-  } // storage
+  } // Spider::storage
   //-----------------------------------------------------
 
   private function storageResult($result) {
@@ -691,51 +771,64 @@ class Spider {
         echo "storage return:\n".$echo;
         break;
     }
-  } // storageResult
+  } // Spider::storageResult
   //-----------------------------------------------------
 
   private function getRandomDelay() {
     return rand(50000, 1000000);
-  } // getRandomWait
+  } // Spider::getRandomWait
   //-----------------------------------------------------
 
-  private function doEvents($link, $events, $filters, &$params) {
+  private function filterIt($link, $filters) {
+    $result = true;
+    echo "start filtering\n";
+    foreach ($filters as $filter) {
+      $linkValue = $link->getAttribute($filter['attr']);
+      $valueExists = false;
+      foreach($filter['value'] as $filterValue) {
+        echo "$filterValue - $linkValue\n";
+        if ($filterValue == $linkValue)
+          $valueExists = true;
+      }
+      echo "valueExists = $valueExists\n";
+      if (!$valueExists)
+        $result = false;
+    }
+    return $result;
+  } // Spider::filterIt
+  //-----------------------------------------------------
+
+  private function doEvents($link, $events, &$params) {
+
     foreach ($events as $event) {
 
       if ($event == '')
         continue;
 
-      // filters
-      $mayDo = true;
-      foreach ($filters as $filter) {
-        if ($link->getAttribute($filter['attr']) != $filter['value'])
-          $mayDo = false;
-      }
-
       // get value
-      if ($mayDo) {
-        if ($params['parentElement']['waitBetweenEvents'])
-          usleep($this->getRandomDelay());
-        switch ($event) {
-          case 'click':
-            $actions = new WebDriverActions($this->driver);
-            $actions->moveToElement($link, 10, 5);
-            if ($params['parentElement']['waitBetweenEvents'])
-              usleep(500000);
-            $link->click();
-            break;
-          case 'moveToElement':
-            $link->moveToElement();
-            break;
-          default:
-            echo "no method for event '$event'";
-        }
+      if ($params['parentElement']['waitBetweenEvents'])
+        usleep($this->getRandomDelay());
+      switch ($event) {
+        case 'click':
+          $actions = new WebDriverActions($this->driver);
+          $actions->moveToElement($link, 10, 5);
+          if ($params['parentElement']['waitBetweenEvents'])
+            usleep(500000);
+          $link->click();
+          break;
+        case 'moveToElement':
+          $link->moveToElement();
+          break;
+        default:
+          echo "no method for event '$event'";
       }
     }
-  } // doEvents
+
+  } // Spider::doEvents
   //-----------------------------------------------------
 
-  private function getValues($link, $values, $filters, $valueNum, &$result) {
+  private function getValues($link, $values, $valueNum, &$result) {
+
     foreach ($values as $value) {
 
       // check for duplicate fieldname
@@ -744,51 +837,44 @@ class Spider {
         if ($res['name'] == $value['fieldName'])
           $exists = true;
       if ($exists)
-        return;
+        return false;
 
       try {
-        // filters
-        $mayGet = true;
-        foreach ($filters as $filter) {
-          if ($link->getAttribute($filter['attr']) != $filter['value'])
-            $mayGet = false;
-        }
-
         // get value
-        if ($mayGet) {
-          $val = $link->getAttribute($value['attr']);
+        $val = $link->getAttribute($value['attr']);
 
-          $result['values'][$valueNum][] = array(
-            'name' => $value['fieldName'],
-            'value' => $val
-          );
-        }
+        $result['values'][$valueNum][] = array(
+          'name' => $value['fieldName'],
+          'value' => $val
+        );
+
         //echo "current field: ".$value['fieldName']."\ncurrent value: $val\n";
         print_r($result['values'][$valueNum]);
       } catch (NoSuchElementException $e) {
         continue;
       }
     }
-  } // getValues
+
+  } // Spider::getValues
   //-----------------------------------------------------
 
   public function printResult() {
     if ($this->status == 'complete')
       print_r($this->result);
-  } // printResult
+  } // Spider::printResult
   //-----------------------------------------------------
 
 } // Spider
 //-----------------------------------------------------
 
-class Link {
+abstract class Link {
 
   public static function saveLink($source, $destination, $currPage='') {
     if ((substr($source, 0, 5) == 'data:') && (strpos($source, 'base64'))) {
       //print_r('save base64 to '.$destination.'...');
       return static::saveBase64($source, $destination);
     }
-  } // saveLink
+  } // Link::saveLink
   //-----------------------------------------------------
 
   private static function saveBase64($source, $destination) {
@@ -811,7 +897,7 @@ class Link {
     }
 
     return true;
-  } // saveBase64
+  } // Link::saveBase64
 
 } // Link
 //-----------------------------------------------------
@@ -822,7 +908,7 @@ class Pixel {
         $this->r = ($r > 255) ? 255 : (($r < 0) ? 0 : (int)($r));
         $this->g = ($g > 255) ? 255 : (($g < 0) ? 0 : (int)($g));
         $this->b = ($b > 255) ? 255 : (($b < 0) ? 0 : (int)($b));
-    } // Pixel
+    } // Pixel::__construct
 } // Pixel
 //-----------------------------------------------------
 
@@ -857,7 +943,7 @@ class Recognize {
     $this->result = substr($fileName, $startPos, $lastPos - $startPos);
 
     $this->gage = array(0 => ' ', 24 => '-', 208 => '0', 87 => '1', 165 => '2', 186 => '3', 152 => '4', 194 => '5', 220 => '6', 125 => '7', 227 => '8');
-  } // __construct
+  } // Recognize::__construct
   //-----------------------------------------------------
 
   public function recognize() {
@@ -912,7 +998,7 @@ class Recognize {
       }
     }
     return $result;
-  } // recognize
+  } // Recognize::recognize
   //-----------------------------------------------------
 
   private function contrast() {
@@ -927,7 +1013,7 @@ class Recognize {
         imagesetpixel($this->image, $x, $y, $color);
       }
     }
-  } // contrast
+  } // Recognize::contrast
   //-----------------------------------------------------
 } // Recognize
 //-----------------------------------------------------

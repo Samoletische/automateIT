@@ -1,5 +1,5 @@
 <?php
-namespace Facebook\WebDriver;
+//namespace Facebook\WebDriver;
 
 require_once('client_inc.php');
 // ini_set('error_reporting', E_ALL);
@@ -7,10 +7,13 @@ require_once('client_inc.php');
 // ini_set('display_startup_errors', 1);
 
 $webJSON = System::SendRequest($server.'/start.php?', array('command' => 'getJSON'));
-if ($webJSON !== NULL) {
-  $web = new Web($webJSON);
+if (!is_null($webJSON)) {
+  $error = '';
+  $web = System::createWeb($webJSON, $error);
   //print_r($webJSON);
-  if ($web !== NULL)
+  if (is_null($web))
+    echo "Creation Web error: $error\n";
+  else
     $web->collect();
 }
 else
