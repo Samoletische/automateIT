@@ -20,6 +20,10 @@ require_once('../lib/vendor/autoload.php');
 require_once('conf_c.php');
 //-----------------------------------------------------
 
+// ini_set('error_reporting', E_ALL);
+// ini_set('display_errors', 1);
+// ini_set('display_startup_errors', 1);
+
 class System {
   // sendRequest
   //  Кодирует получаемый через параметр контент, отправляет его в формате JSON
@@ -144,7 +148,7 @@ class Web {
 
 class Spider {
 
-  const PAGE_LOAD_TIMEOUT = 3; // in seconds
+  const PAGE_LOAD_TIMEOUT = 7; // in seconds
 
   private $driver;
   private $wait;
@@ -229,8 +233,13 @@ class Spider {
     $this->driver->manage()->timeouts()->pageLoadTimeout(self::PAGE_LOAD_TIMEOUT);
     //$this->driver = RemoteWebDriver::create($serverSelenium, $capabilities);
     try {
+      echo "getting page at URL '{$this->currPage}'\n";
       $this->currPage = $this->driver->get($this->currPage);
+      echo 'try current URL - '."\n";
+      echo $this->driver->getCurrentUrl()."\n";
     } catch (TimeOutException $te) {
+      echo 'catch current URL - '."\n";
+      echo $this->driver->getTitle()."\n";
     }
   } // initDriver
   //-----------------------------------------------------
@@ -262,7 +271,7 @@ class Spider {
     foreach ($links as $link) {
       $nextPage = $this->getExistingElement($link, $pagination['nextPage']);
       if ($nextPage) {
-        $this->doEvents($nextPage, $pagination['events'], $this->params);
+        $this->doEvents($nextPage, $pagination['events'], $pagination['filter'], $this->params);
         $page = $nextPage->getAttribute($pagination['valueAttr']);
       }
     }
@@ -354,9 +363,10 @@ class Spider {
       if ($valueNum === NULL)
         $valueNum = count($result['values']);
       $parentElement = $params['parentElement'];
-      echo "parent css: ".$parentElement['cssSelector']."\n";
+      echo date('H:i:s')." - parent css: ".$parentElement['cssSelector']."\n";
       while (true) {
         //$links = $this->driver->findElements(WebDriverBy::cssSelector($parentElement['cssSelector']));
+        //echo 'current URL - '.$this->driver->getCurrentUrl()."\n";
         $links = $this->getExistingElements($this->driver, $parentElement['cssSelector']);
         if (!$links) {
           echo "find parent elements error\n";
@@ -398,32 +408,39 @@ class Spider {
           $link = $links[$index];
           $errorMessage = '';
           // 1. a) do events
-          $this->doEvents($link, $parentElement['events'], $params);
+          $this->doEvents($link, $parentElement['events'], $parentElement['filter'], $params);
           $childElements = $params['childElements'];
           // 1. b) get data
           echo "values of parentElement:\n";
           print_r($parentElement['values']);
-          $this->getValues($link, $parentElement['values'], $valueNum, $result);
+          $this->getValues($link, $parentElement['values'], $parentElement['filter'], $valueNum, $result);
           // 1. c) get data from child page
 
           // 2. collect data from elements
           foreach ($childElements['elements'] as $element) {
-            $childLink = $this->getExistingElement($link, $element['cssSelector']);
-            if (!$childLink) {
+            //$childLink = $this->getExistingElement($link, $element['cssSelector']);
+            $childLinks = $this->getExistingElements($link, $element['cssSelector']);
+            echo date('H:i:s').' - count of child element '.$element['cssSelector'].' = '.count($childLinks);
+            //if (!$childLink) {
+            if (!$childLinks) {
               $errorMessage .= $errorMessage == '' ? '' : '; ';
               $errorMessage .= "find child elements error: ";
               continue;
             }
-            // 2. a) do events
-            $this->doEvents($childLink, $element['events'], $params);
-            // 2. b) get data
-            $this->getValues($childLink, $element['values'], $valueNum, $result);
+            foreach ($childLinks as $childLink) {
+              // 2. a) do events
+              $this->doEvents($childLink, $element['events'], $element['filter'], $params);
+              // 2. b) get data
+              $this->getValues($childLink, $element['values'], $element['filter'], $valueNum, $result);
+            }
             // 2. c) get data from child page
           }
 
           // 3. collect from child pages
+          echo 'count of child pages='.count($parentElement['childPages'])."\n";
           foreach ($parentElement['childPages'] as $childPageIndex => $childPage) {
 
+            echo "start collect from child page\n";
             // get href of child page
             $childPagelink = $this->getExistingElement($link, $childPage['cssSelector']);
             if (!$childPagelink) {
@@ -535,6 +552,7 @@ class Spider {
 
   private function getExistingElements($link, $cssSelector) {
     $i = 10; // в общей сложности ждём 5 секунд с периодом по 500 милисекунд
+    //echo date('H:i:s')." - start finding elements '$cssSelector'\n";
     while ($i-- > 0) {
       $elements = $link->findElements(WebDriverBy::cssSelector($cssSelector));
       if (count($elements) == 0)
@@ -542,6 +560,7 @@ class Spider {
       else
         break;
     }
+    //echo date('H:i:s')." - end finding elements '$cssSelector', count={count($elements)}\n";
     return count($elements) == 0 ? false : $elements;
   } // getExistingElement
   //-----------------------------------------------------
@@ -593,6 +612,25 @@ class Spider {
                 $field['value'] = $recog->recognize();
               }
               break;
+            case 'trim':
+              $field['value'] = trim($field['value']);
+              break;
+            case 'left':
+              $param = (int) $process['param'];
+              $field['value'] = substr($field['value'], 0, $param);
+              break;
+            case 'right':
+              $param = (int) $process['param'];
+              $field['value'] = substr($field['value'], strlen($field['value']) - $param);
+              break;
+            case 'cutLeft':
+              $param = (int) $process['param'];
+              $field['value'] = substr($field['value'], $param);
+              break;
+            case 'cutRight':
+              $param = (int) $process['param'];
+              $field['value'] = substr($field['value'], 0, strlen($field['value']) - $param);
+              break;
           }
         }
       }
@@ -639,6 +677,7 @@ class Spider {
           // пробежаться по childElements
           // пробежаться по childPages ???
         }
+        $result['overwrite'] = $this->params['storage']['overwrite'];
 
         echo "send to storage:\n";
         print_r($result);
@@ -660,42 +699,71 @@ class Spider {
   } // getRandomWait
   //-----------------------------------------------------
 
-  private function doEvents($link, $events, &$params) {
+  private function doEvents($link, $events, $filters, &$params) {
     foreach ($events as $event) {
+
       if ($event == '')
         continue;
-      if ($params['parentElement']['waitBetweenEvents'])
-        usleep($this->getRandomDelay());
-      switch ($event) {
-        case 'click':
-          $actions = new WebDriverActions($this->driver);
-          $actions->moveToElement($link, 10, 5);
-          if ($params['parentElement']['waitBetweenEvents'])
-            usleep(500000);
-          $link->click();
-          break;
-        case 'moveToElement':
-          $link->moveToElement();
-          break;
-        default:
-          echo "no method for event '$event'";
+
+      // filters
+      $mayDo = true;
+      foreach ($filters as $filter) {
+        if ($link->getAttribute($filter['attr']) != $filter['value'])
+          $mayDo = false;
+      }
+
+      // get value
+      if ($mayDo) {
+        if ($params['parentElement']['waitBetweenEvents'])
+          usleep($this->getRandomDelay());
+        switch ($event) {
+          case 'click':
+            $actions = new WebDriverActions($this->driver);
+            $actions->moveToElement($link, 10, 5);
+            if ($params['parentElement']['waitBetweenEvents'])
+              usleep(500000);
+            $link->click();
+            break;
+          case 'moveToElement':
+            $link->moveToElement();
+            break;
+          default:
+            echo "no method for event '$event'";
+        }
       }
     }
   } // doEvents
   //-----------------------------------------------------
 
-  private function getValues($link, $values, $valueNum, &$result) {
+  private function getValues($link, $values, $filters, $valueNum, &$result) {
     foreach ($values as $value) {
+
+      // check for duplicate fieldname
+      $exists = false;
+      foreach ($result['values'][$valueNum] as $res)
+        if ($res['name'] == $value['fieldName'])
+          $exists = true;
+      if ($exists)
+        return;
+
       try {
-        if ($value['attr'] == 'text')
-          $val = $link->getText();
-        else
+        // filters
+        $mayGet = true;
+        foreach ($filters as $filter) {
+          if ($link->getAttribute($filter['attr']) != $filter['value'])
+            $mayGet = false;
+        }
+
+        // get value
+        if ($mayGet) {
           $val = $link->getAttribute($value['attr']);
-        $result['values'][$valueNum][] = array(
-          'name' => $value['fieldName'],
-          'value' => $val
-        );
-        echo "current value: ".$value['fieldName']."\n";
+
+          $result['values'][$valueNum][] = array(
+            'name' => $value['fieldName'],
+            'value' => $val
+          );
+        }
+        //echo "current field: ".$value['fieldName']."\ncurrent value: $val\n";
         print_r($result['values'][$valueNum]);
       } catch (NoSuchElementException $e) {
         continue;

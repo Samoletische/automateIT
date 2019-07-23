@@ -18,7 +18,7 @@ $content = file_get_contents('php://input');
 
 $in = json_decode($content, true);
 if ((array_key_exists('command', $in)) && ($in['command'] == 'getJSON'))
-  echo file_get_contents('json/gPlay_web.json');
+  echo file_get_contents('json/dromLexus_web.json');
 else
   echo json_encode(array('result' => 'bad command'));
 ?>
