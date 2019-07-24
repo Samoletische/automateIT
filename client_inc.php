@@ -787,7 +787,8 @@ class Spider {
       $valueExists = false;
       foreach($filter['value'] as $filterValue) {
         echo "$filterValue - $linkValue\n";
-        if ($filterValue == $linkValue)
+        if ((!$filter['xor'] && ($filterValue == $linkValue))
+            || ($filter['xor'] && ($filterValue != $linkValue)))
           $valueExists = true;
       }
       echo "valueExists = $valueExists\n";
