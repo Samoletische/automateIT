@@ -1,0 +1,16 @@
+{
+  "pageName": "",
+  "collectPeriod": 0,
+  "monitorPeriod": 0,
+  "filter": [
+    {
+      "attr": "",
+      "value": [],
+      "xor": false
+    }
+  ],
+  "sendFromFirstCollect": false,
+  "e-mail": [],
+  "collectParams": "",
+  "collectAllData": false
+}

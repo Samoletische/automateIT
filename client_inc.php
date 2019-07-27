@@ -101,7 +101,7 @@ abstract class System {
   //-----------------------------------------------------
 
   // checkJsonStructure
-  //  Сравнивает две структуры файлов типа web.json. Одна структура эталонная, другая - проверяемая.
+  //  Сравнивает две структуры параметризированных массивов. Одна структура эталонная, другая - проверяемая.
   //  Параметры:
   //    $ethalon                - array   - параметризированный массив эталонной структуры
   //    $check                  - array   - параметризированный массив проверяемой структуры
@@ -781,15 +781,21 @@ class Spider {
 
   private function filterIt($link, $filters) {
     $result = true;
-    echo "start filtering\n";
+    echo "start filtering. Count = ".count($filters)."\n";
     foreach ($filters as $filter) {
+      echo "filter = '".$filter['value']."'\n";
+      if (count($filter['value']) == 0)
+        continue;
       $linkValue = $link->getAttribute($filter['attr']);
-      $valueExists = false;
+      //$valueExists = false;
+      $valueExists = $filter['xor'];
       foreach($filter['value'] as $filterValue) {
         echo "$filterValue - $linkValue\n";
-        if ((!$filter['xor'] && ($filterValue == $linkValue))
-            || ($filter['xor'] && ($filterValue != $linkValue)))
-          $valueExists = true;
+        // if ((!$filter['xor'] && ($filterValue == $linkValue))
+        //     || ($filter['xor'] && ($filterValue != $linkValue)))
+        if ($filterValue == $linkValue)
+          //$valueExists = true;
+          $valueExists = !$filter['xor'];
       }
       echo "valueExists = $valueExists\n";
       if (!$valueExists)

@@ -6,3 +6,5 @@ cp client_inc.php /Volumes/www/automateIT/client_inc.php
 cp start.php /Volumes/www/automateIT/start.php
 cp storage.php /Volumes/www/automateIT/storage.php
 cp spider.php /Volumes/www/automateIT/spider.php
+cp conf/storage.json /Volumes/www/automateIT/conf/storage.json
+cp conf/monitor.json /Volumes/www/automateIT/conf/monitor.json
