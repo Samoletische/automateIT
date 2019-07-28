@@ -14,31 +14,30 @@ const TIMEZONE = 6;
 abstract class System {
 
   // checkJSON
-  //  Проверяет массив параметров из файла типа storage.json на корректность структуры.
+  //  Сравнивает массив параметров и эталонный файл формата JSON на совпадение структуры.
   //  Параметры:
-  //    $params   - array   - параметризированный массив
-  //    $error    - string  - при возникновении ошибки сюда запишется её текст
+  //    $params       - array   - параметризированный массив сравниваемой структуры
+  //    $ethalonFile  - string  - относительный путь к эталонному файлу JSON
+  //    $error        - string  - при возникновении ошибки сюда запишется её текст
   //  Возвращаемые значения:
   //    bool - true, если соответствует эталонной структуре, и false, если НЕ соответствует.
-  static function checkJSON($params, &$error='') {
+  static function checkJSON($params, $ethalonFile, &$error='') {
 
-    global $storageJsonEthalon;
-
-    if (!file_exists($storageJsonEthalon)) {
-      $error = "Ethalon storage.json file '$storageJsonEthalon' not exists";
+    if (!file_exists($ethalonFile)) {
+      $error = "Ethalon file '$ethalonFile' not exists";
       return false;
     }
 
-    $ethalon = json_decode(file_get_contents($storageJsonEthalon), true);
+    $ethalon = json_decode(file_get_contents($ethalonFile), true);
     if (json_last_error() !== JSON_ERROR_NONE) {
-      $error = "Can't load ethalon storage.json file '$storageJsonEthalon'. Bad JSON format.";
+      $error = "Can't load ethalon file '$ethalonFile'. Bad JSON format.";
       return false;
     }
 
     // check for nessesary fields in JSON
     if ((empty($params)) || (!is_array($params))
         || (empty($ethalon)) || (!is_array($ethalon))) {
-      $error = 'Bad storage.json structure';
+      $error = 'Bad JSON structure';
       if (empty($params)) {
         $error .= "\nparams\n";
         print_r($params);
@@ -48,7 +47,7 @@ abstract class System {
 
     $firstNotExistingField = '';
     if (!System::checkJsonStructure($ethalon, $params, $firstNotExistingField)) {
-      $error = "Bad storage.json structure: not exists '$firstNotExistingField' field";
+      $error = "Bad JSON structure: not exists '$firstNotExistingField' field";
       return false;
     }
 
@@ -83,15 +82,28 @@ abstract class System {
   } // System::checkJsonStructure
   //-----------------------------------------------------
 
+  static function insertLog($message) {
+
+    $db = Storage::getDB();
+    if (is_null($db))
+      return;
+
+    $db->query("INSERT INTO logs SET message='$message', addr='{$_SERVER['REMOTE_ADDR']}'");
+
+  } // System::insertLog
+  //-----------------------------------------------------
+
 }
 //-----------------------------------------------------
 
 abstract class Storage {
 
-  static function save($result) {
+  static function save($result, $insertOnly, $overwrite=true) {
+
+    global $storageJsonEthalon;
 
     $error = '';
-    if (!System::checkJSON($result, $error)) {
+    if (!System::checkJSON($result, $storageJsonEthalon, $error)) {
       echo "Ошибка сохранения результата: $error\n";
       return false;
     }
@@ -101,17 +113,19 @@ abstract class Storage {
       return false;
 
     foreach ($result['values'] as $record) {
-    	// запрос на проверку уже существующей записи
-      $where = '';
-    	$queryStr = self::getQueryStrOfIDByIndexesFields($result, $record, $where);
-    	$query = $db->query($queryStr);
-    	if (!$query) {
-        echo "Ошибка БД 1: ".$db->error."\n";
-        return false;
-    	}
+      if (!$insertOnly) {
+      	// запрос на проверку уже существующей записи
+        $where = '';
+      	$queryStr = self::getQueryStrOfIDByIndexesFields($result, $record, $where);
+      	$query = $db->query($queryStr);
+      	if (!$query) {
+          echo "Ошибка БД 1: ".$db->error."\n";
+          return false;
+      	}
+      }
     	// если запись уже есть
-      if ($query->num_rows > 0) {
-        if ($result['overwrite']) {
+      if (!$insertOnly || $query->num_rows > 0) {
+        if ($overwrite) {
           // обновляем запись
         	$fields = '';
         	foreach ($record as $res) {
@@ -125,7 +139,7 @@ abstract class Storage {
         	echo $queryStr."\n";
         	$query = $db->query($queryStr);
         	if (!$query) {
-            echo "Ошибка БД 3: ".$db->error."\n";
+            echo "Ошибка БД при обновлении записи: ".$db->error."\n";
             return false;
           }
         } else
@@ -144,7 +158,7 @@ abstract class Storage {
       	echo $queryStr."\n";
       	$query = $db->query($queryStr);
       	if (!$query) {
-          echo "Ошибка БД 2: ".$db->error."\n";
+          echo "Ошибка БД при добавлении записи: ".$db->error."\n";
           return false;
         }
       }
@@ -157,10 +171,12 @@ abstract class Storage {
 
   static function check($result) {
 
+    global $storageJsonEthalon;
+
     $res = array(); // формат такой же как поле filter в web.json
 
     $error = '';
-    if (!System::checkJSON($result, $error)) {
+    if (!System::checkJSON($result, $storageJsonEthalon, $error)) {
       echo "Ошибка проверки результата: $error\n";
       return $res;
     }
@@ -189,7 +205,7 @@ abstract class Storage {
             }
           if (!$isIndex)
             continue;
-            
+
           // add to result
           $attrExists = false;
           $attrKey = -1;
@@ -207,7 +223,6 @@ abstract class Storage {
             $res[] = array( "attr" => $fields['name'], "value" => array($fields['value']) );
         }
     }
-    print_r($res);
 
     return $res;
 

@@ -359,7 +359,7 @@ class Spider {
   } // Spider::getStatus
   //-----------------------------------------------------
 
-  public function collect() {
+  public function collect($collectAfterCheck=false, $params=NULL) {
     $this->status = 'collecting';
     // $pcurrPage = $this->currPage;
     // $lastPage = '';
@@ -373,7 +373,8 @@ class Spider {
 
     // collect
     try {
-      if (!$this->collectFromPage($this->params, $this->result, 0))
+      $params = $collectAfterCheck ? $params : $this->params;
+      if (!$this->collectFromPage($params, $this->result, 0))
         return NULL;
     } catch (Exception $ex) {
       return NULL;
@@ -390,8 +391,23 @@ class Spider {
     // storage
     if ($this->status == 'error')
       return;
-    else
-      $this->storage();
+    else {
+      $echo = $this->storage();
+      if ($collectAfterCheck)
+        return;
+      elseif (!$params['collectAllData']) { // вернулись параметры только тех данных, которых нет в БД
+        $filter = json_decode($echo, true);
+        if (json_last_error() !== JSON_ERROR_NONE) {
+          echo "bad data returns from storage\n"
+          return;
+        }
+        if (count($filter) == 0)
+          return;
+        // обновляем filter в $params и отправляем на новый виток
+        
+        $this->collect(true, $params);
+      }
+    }
 
     // finish
     if ($this->status == 'error')
@@ -723,7 +739,7 @@ class Spider {
   private function storage() {
     echo "storaging\n";
     $this->status = 'storaging';
-    $this->storageResult($this->result);
+    return $this->storageResult($this->result);
   } // Spider::storage
   //-----------------------------------------------------
 
@@ -757,7 +773,8 @@ class Spider {
           // пробежаться по childElements
           // пробежаться по childPages ???
         }
-        $result['overwrite'] = $this->params['storage']['overwrite'];
+        $result['collectAllData'] = $this->params['collectAllData'];
+        $result['insertOnly'] = $this->params['insertOnly'];
 
         echo "send to storage:\n";
         print_r($result);
@@ -768,8 +785,11 @@ class Spider {
             'content' => json_encode($result)
           )
         )));
-        echo "storage return:\n".$echo;
-        break;
+        echo "storage return:\n";
+
+        // обработка ошибок сохранения/проверки
+
+        return $echo;
     }
   } // Spider::storageResult
   //-----------------------------------------------------

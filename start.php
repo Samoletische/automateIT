@@ -1,5 +1,6 @@
 <?php
 $content = file_get_contents('php://input');
+$json = 'conf/dromLexus_web.json';
 
 // try {
 //   $headers = getallheaders();
@@ -17,8 +18,16 @@ $content = file_get_contents('php://input');
 // }
 
 $in = json_decode($content, true);
-if ((array_key_exists('command', $in)) && ($in['command'] == 'getJSON'))
-  echo file_get_contents('conf/dromLexus_web.json');
-else
-  echo json_encode(array('result' => 'bad command'));
+if (json_last_error() != JSON_ERROR_NONE)
+  echo json_encode(array('result' => 'error', 'message' => 'bad query'));
+if (!array_key_exists('command', $in))
+  echo json_encode(array('result' => 'error', 'message' => 'no command on query'));
+
+switch($in['command']) {
+  case 'getJSON':
+    echo file_get_contents($json);
+    break;
+  default:
+    echo json_encode(array('result' => 'error', 'message' => 'bad command'));
+}
 ?>

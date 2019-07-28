@@ -5,7 +5,9 @@
   "maxPagesCollect": "",
   "firstItemIndex": 0,
   "maxItemsCollect": 0,
-  "storage": {"method": "", "param": "", "overwrite": false},
+  "collectAllData": false,
+  "insertOnly": false,
+  "storage": {"method": "", "param": ""},
   "parentElement": {
     "waitBetweenEvents": false,
     "waitWhenEnterText": false,
