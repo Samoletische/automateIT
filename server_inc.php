@@ -136,7 +136,7 @@ abstract class Storage {
           $date = date('Y-m-d H:i:s', time() + TIMEZONE*3600);
           $fields .= "dateNow='".$date."'";
         	$queryStr = 'UPDATE '.$result['pageName']." SET $fields WHERE $where";
-        	echo $queryStr."\n";
+        	//echo $queryStr."\n";
         	$query = $db->query($queryStr);
         	if (!$query) {
             echo "Ошибка БД при обновлении записи: ".$db->error."\n";
@@ -155,7 +155,7 @@ abstract class Storage {
         	$values .= $res['value']."'";
       	}
       	$queryStr = 'INSERT INTO '.$result['pageName'].'('.$fields.') VALUES('.$values.')';
-      	echo $queryStr."\n";
+      	//echo $queryStr."\n";
       	$query = $db->query($queryStr);
       	if (!$query) {
           echo "Ошибка БД при добавлении записи: ".$db->error."\n";
@@ -210,7 +210,7 @@ abstract class Storage {
           $attrExists = false;
           $attrKey = -1;
           foreach($res as $key => $attr) {
-            echo $attr['attr'].'=='.$fields['name']."\n";
+            //echo $attr['attr'].'=='.$fields['name']."\n";
             if ($attr['attr'] == $fields['name']) {
               $attrExists = true;
               $attrKey = $key;
@@ -257,7 +257,7 @@ abstract class Storage {
       }
     }
     $queryStr = 'SELECT id FROM '.$result['pageName'].' WHERE '.$where;
-    echo $queryStr."\n";
+    //echo $queryStr."\n";
 
     return $queryStr;
   } // Storage::getQueryStrOfIDByIndexesFields

@@ -374,6 +374,9 @@ class Spider {
     // collect
     try {
       $params = $collectAfterCheck ? $params : $this->params;
+      echo "insertOnly before collect=".$params['insertOnly'];
+      if ($collectAfterCheck)
+        $this->eraseResult($this->result, $params['pageName']);
       if (!$this->collectFromPage($params, $this->result, 0))
         return NULL;
     } catch (Exception $ex) {
@@ -392,20 +395,41 @@ class Spider {
     if ($this->status == 'error')
       return;
     else {
-      $echo = $this->storage();
+      $storageResult = $this->storage($params);
+
+      echo "collectAfterCheck=$collectAfterCheck\n";
+      if ($collectAfterCheck)
+        echo "storage after save:\n";
+      else
+        echo "storage after check:\n";
+      print_r($storageResult);
+
       if ($collectAfterCheck)
         return;
       elseif (!$params['collectAllData']) { // вернулись параметры только тех данных, которых нет в БД
-        $filter = json_decode($echo, true);
+        $filters = json_decode($storageResult, true);
         if (json_last_error() !== JSON_ERROR_NONE) {
-          echo "bad data returns from storage\n"
+          echo "bad data returns from storage\n";
           return;
         }
-        if (count($filter) == 0)
-          return;
-        // обновляем filter в $params и отправляем на новый виток
-        
-        $this->collect(true, $params);
+        if (count($filters) != 0) {
+          // обновляем filter в $params и отправляем на новый виток
+          $params['parentElement']['filter'] = array();
+          foreach($params['parentElement']['values'] as $value)
+            foreach($filters as $filter)
+              if ($filter['attr'] == $value['fieldName'])
+                $params['parentElement']['filter'][] = array('attr' => $value['attr'], 'value' => $filter['value'], 'xor' => false);
+          // foreach ($params['childElements']['elements'] as $element) {
+          //   $element['filter'] = array();
+          //   foreach($element['values'] as $value)
+          //     foreach($filters as $filter)
+          //       if ($filter['attr'] == $value['fieldName'])
+          //         $element['filter'][] = array('attr' => $value['attr'], 'value' => $filter['value'], 'xor' => false);
+          // }
+          echo "insertOnly=".$params['insertOnly'].", change on true\n";
+          $params['insertOnly'] = true;
+          $this->collect(true, $params);
+        }
       }
     }
 
@@ -414,6 +438,7 @@ class Spider {
       return;
     else {
       $this->eraseResult($this->result, $this->params['pageName']);
+      echo "complete\n";
       $this->status = 'complete';
     }
 
@@ -736,20 +761,23 @@ class Spider {
   } // Spider::processResult
   //-----------------------------------------------------
 
-  private function storage() {
+  private function storage($params=NULL) {
     echo "storaging\n";
     $this->status = 'storaging';
-    return $this->storageResult($this->result);
+    return $this->storageResult($this->result, $params);
   } // Spider::storage
   //-----------------------------------------------------
 
-  private function storageResult($result) {
-    switch ($this->params['storage']['method']) {
+  private function storageResult($result, $params=NULL) {
+
+    $params = is_null($params) ? $this->params : $params;
+
+    switch ($params['storage']['method']) {
       case "JSON":
         $json = json_encode($result);
         if (json_last_error() === JSON_ERROR_NONE) {
-          $path = substr($this->params['storage']['param'], strlen($this->params['storage']['param']) - 1, 1) == '/' ? '' : '/';
-          $path = $this->params['storage']['param'].$path.$result['pageName']."_p".$this->currPageNum.".json";
+          $path = substr($params['storage']['param'], strlen($params['storage']['param']) - 1, 1) == '/' ? '' : '/';
+          $path = $params['storage']['param'].$path.$result['pageName']."_p".$this->currPageNum.".json";
           $f = fopen($path, 'w');
           if ($f) {
             fwrite($f, $json);
@@ -764,17 +792,17 @@ class Spider {
 
         // prepare storage.json
         $result['paramsValues'] = array();
-        $result['paramsValues'] = array_merge($result['paramsValues'], $this->params['parentElement']['values']);
-        foreach($this->params['childElements']['elements'] as $element)
+        $result['paramsValues'] = array_merge($result['paramsValues'], $params['parentElement']['values']);
+        foreach($params['childElements']['elements'] as $element)
           $result['paramsValues'] = array_merge($result['paramsValues'], $element['values']);
-        foreach($this->params['childPages'] as $element) {
+        foreach($params['childPages'] as $element) {
           // сделать проверку на совпадение имён таблиц БД
           $result['paramsValues'] = array_merge($result['paramsValues'], $element['parentElement']['values']);
           // пробежаться по childElements
           // пробежаться по childPages ???
         }
-        $result['collectAllData'] = $this->params['collectAllData'];
-        $result['insertOnly'] = $this->params['insertOnly'];
+        $result['collectAllData'] = $params['collectAllData'];
+        $result['insertOnly'] = $params['insertOnly'];
 
         echo "send to storage:\n";
         print_r($result);
@@ -791,6 +819,7 @@ class Spider {
 
         return $echo;
     }
+
   } // Spider::storageResult
   //-----------------------------------------------------
 
@@ -803,7 +832,7 @@ class Spider {
     $result = true;
     echo "start filtering. Count = ".count($filters)."\n";
     foreach ($filters as $filter) {
-      echo "filter = '".$filter['value']."'\n";
+      //echo "filter = '".$filter['value']."'\n";
       if (count($filter['value']) == 0)
         continue;
       $linkValue = $link->getAttribute($filter['attr']);

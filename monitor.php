@@ -13,15 +13,15 @@ function makeAnswer() {
 
   $in = json_decode($content, true);
   if (json_last_error() != JSON_ERROR_NONE) {
-    System::insertLog('bad query');
+    System::insertLog('monitor.php: bad query');
     return array('result' => 'error', 'message' => 'bad query');
   }
   if (!array_key_exists('command', $in)) {
-    System::insertLog('no command on query');
+    System::insertLog('monitor.php: no command on query');
     return array('result' => 'error', 'message' => 'no command on query');
   }
 
-  System::insertLog($in['command']);
+  System::insertLog('monitor.php: '.$in['command']);
   switch($in['command']) {
     case 'getJSON':
       return getJSON();
@@ -39,13 +39,13 @@ function getJSON () {
 
   $monitorJSON = json_decode(file_get_contents($json), true);
   if (json_last_error() != JSON_ERROR_NONE) {
-    System::insertLog('bad JSON in monitor.json');
+    System::insertLog('monitor.php: bad JSON in monitor.json');
     return array('result' => 'error', 'message' => 'bad JSON in monitor.json');
   }
   // проверка структуры
   $error = '';
   if (!System::checkJSON($monitorJSON, $monitorJsonEthalon, $error)) {
-    System::insertLog('error in monitor.json: '.$error);
+    System::insertLog('monitor.php: error in monitor.json: '.$error);
     return array('result' => 'error', 'message' => 'error in monitor.json: '.$error);
   }
   // проверка на наличие уже данных по этому мониторингу в БД
@@ -54,7 +54,7 @@ function getJSON () {
   $result['collectParams'] = json_decode(file_get_contents($monitorJSON['collectParams']), true);
   // запуск мониторинга на сервере
 
-  System::insertLog('return params');
+  System::insertLog('monitor.php: return params');
 
   return $result;
 
