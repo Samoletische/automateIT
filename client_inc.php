@@ -474,9 +474,32 @@ class Spider {
     //print_r($params);
 
     try {
-      // 1. get parent element
       if ($valueNum === NULL)
         $valueNum = count($result['values']);
+
+      // 0. events with start page
+      $mainElement = $params['startPagePreCollect'];
+      if ($mainElement['cssSelector'] != '') {
+        $links = $this->getExistingElements($this->driver, $mainElement['cssSelector']);
+        if (!$links) {
+          echo "find elements before collect error\n";
+          return NULL;
+        }
+        $count = count($links);
+        echo "count of preCollect Links: ".$count."\n";
+        foreach($links as $link) {
+          // filters
+          if (!$this->filterIt($link, $mainElement['filter']))
+            continue;
+          // do events
+          $this->doEvents($link, $mainElement['events'], $params);
+          // get data
+          $this->getValues($link, $mainElement['values'], $valueNum, $result);
+        }
+      }
+      sleep(2);
+
+      // 1. get parent element
       $parentElement = $params['parentElement'];
       echo date('H:i:s')." - parent css: ".$parentElement['cssSelector']."\n";
       while (true) {
@@ -536,8 +559,11 @@ class Spider {
 
           // 2. collect data from elements
           foreach ($childElements['elements'] as $element) {
-            //$childLink = $this->getExistingElement($link, $element['cssSelector']);
-            $childLinks = $this->getExistingElements($link, $element['cssSelector']);
+            if ($element['fromParent'])
+              //$childLink = $this->getExistingElement($link, $element['cssSelector']);
+              $childLinks = $this->getExistingElements($link, $element['cssSelector']);
+            else
+              $childLinks = $this->getExistingElements($this->driver, $element['cssSelector']);
             echo date('H:i:s').' - count of child element '.$element['cssSelector'].' = '.count($childLinks);
             //if (!$childLink) {
             if (!$childLinks) {

@@ -8,6 +8,14 @@
   "collectAllData": false,
   "insertOnly": false,
   "storage": {"method": "", "param": ""},
+  "startPagePreCollect": {
+    "waitBetweenEvents": true,
+    "waitWhenEnterText": true,
+    "cssSelector": "",
+    "filter": [],
+    "events": [],
+    "values": []
+  },
   "parentElement": {
     "waitBetweenEvents": false,
     "waitWhenEnterText": false,

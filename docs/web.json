@@ -14,6 +14,20 @@
                                                                 // как сохранять данные - метод: JSON, DB; параметр: имя файла (JSON) или имя таблицы (DB)
                                                                 // для DB после имени таблицы идёт "?", за ним "имя поля" в этой таблице, за ним "=", за ним значение "имени поля" из таблицы, с которой нужно соединить значения
                                                                 // используется для дочерних страниц. Для главной страницы имя таблицы оканчивается "?"
+  "startPagePreCollect": {                                      // действия над страницей перед началом сбора основных данных
+    "waitBetweenEvents": true,
+    "waitWhenEnterText": true,
+    "cssSelector": "a.v-tabs__item",
+    "filter": [
+      {
+        "attr": "textContent",
+        "value": ["21.1 км "],
+        "xor": false
+      }
+    ],
+    "events": ["click"],
+    "values": []
+  },
   "parentElement": {
     "waitBetweenEvents": "true",                                // нужно ли делать паузы между действиями
     "waitWhenEnterText": "true",                                // человекоподобный ввод текста
@@ -48,6 +62,7 @@
     "elements": [
       {
         "cssSelector": "a.item-description-title-link",
+        "fromParent": false,                                    // определяет где нужно искать этот селектор: от текущего родительского (true) или глобально на всей странице (false)
         "filter": [],
         "events": [],
         "values": [

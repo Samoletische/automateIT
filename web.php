@@ -4,9 +4,9 @@ require_once('client_inc.php');
 // ini_set('display_errors', 1);
 // ini_set('display_startup_errors', 1);
 
-$command = 'monitor'; // 'monitor' или 'collect'
-//$params = System::SendRequest($server.'/start.php?', array('command' => 'getJSON'));
-$params = System::SendRequest($server.'/monitor.php?', array('command' => 'getJSON'));
+$command = 'collect'; // 'monitor' или 'collect'
+$params = System::SendRequest($server.'/start.php?', array('command' => 'getJSON'));
+//$params = System::SendRequest($server.'/monitor.php?', array('command' => 'getJSON'));
 //print_r($params);
 if ((array_key_exists('result', $params)) && ($params['result'] == 'error') && (array_key_exists('message', $webJSON)))
   echo 'Getting params error: '.$params['message']."\n";
