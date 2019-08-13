@@ -260,8 +260,12 @@ function setCurrPage($in) {
 
   $result = array('result' => '');
 
-  if ((array_key_exists('token', $in)) && (array_key_exists('currPage', $in)) && (array_key_exists('pageNum', $in))) {
-    if (sendCommand($in['token'], 'setCurrPage,'.$in['currPage'].','.$in['pageNum']))
+  if ((array_key_exists('token', $in))
+      && (array_key_exists('currPage', $in))
+      && (array_key_exists('pageNum', $in))
+      && (array_key_exists('firstItemIndex', $in))
+      && (array_key_exists('maxItemsCollect', $in))) {
+    if (sendCommand($in['token'], 'setCurrPage,'.$in['currPage'].','.$in['pageNum'].','.$in['firstItemIndex'].','.$in['maxItemsCollect']))
       $result['result'] = getAnswer($in['token']);
   }
 

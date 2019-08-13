@@ -170,21 +170,42 @@ class Web {
     $currPage = $this->startPage;
     $pageNum = 0;
     $lastResponse = time();
+    $firstItemIndex = $this->params['firstItemIndex']
+    $maxItemsCollect = $this->params['maxItemsCollect']
 
     while (true) {
+      sleep(1);
+
       foreach($this->spiders as $spider) {
+
         if ($currPage == '')
           break;
+
         echo "getStatus\n";
         $status = $this->sendCommandToSpider($spider, 'getStatus');
         echo "'".$status."'\n";
+
         if ($status == 'ready') {
           $pageNum++;
           echo 'setCurrPage: '.$currPage."\n";
-          $this->sendCommandToSpider($spider, 'setCurrPage', array('currPage' => $currPage, 'pageNum' => $pageNum));
+          $this->sendCommandToSpider(
+            $spider,
+            'setCurrPage',
+            array(
+              'currPage' => $currPage,
+              'pageNum' => $pageNum,
+              'firstItemIndex' => $firstItemIndex,
+              'maxItemsCollect' => $maxItemsCollect
+            )
+          );
+
           echo "getNextPage\n";
-          $currPage = $this->sendCommandToSpider($spider, 'getNextPage');
-          echo "'".$currPage."'\n";
+          $nextPage = $this->sendCommandToSpider($spider, 'getNextPage');
+          $currPage = $nextPage['currPage'];
+          $firstItemIndex = $nextPage['firstItemIndex'];
+          $maxItemsCollect = $nextPage['maxItemsCollect'];
+          echo "'$currPage' - $firstItemIndex - $maxItemsCollect\n";
+
           echo "collect\n";
           $this->sendCommandToSpider($spider, 'collect');
           $lastResponse = time();
@@ -193,8 +214,6 @@ class Web {
 
       if (($currPage == '') || (($lastResponse + self::TIMEOUT) < time()))
         break;
-
-      sleep(1);
     }
   } // Web::collect
   //-----------------------------------------------------
@@ -279,9 +298,11 @@ class Spider {
   } // Spider::ReadyToUse
   //-----------------------------------------------------
 
-  public function setCurrPage($page, $pageNum) {
+  public function setCurrPage($page, $pageNum, $firstItemIndex, $maxItemsCollect) {
     $this->currPage = $page;
     $this->currPageNum = $pageNum;
+    $this->params['firstItemIndex'] = $firstItemIndex;
+    $this->params['maxItemsCollect'] = $maxItemsCollect;
     return true;
   } // Spider::setCurrPage
   //-----------------------------------------------------
@@ -324,7 +345,9 @@ class Spider {
   //  Для страниц с прокруткой вернёт пустую страницу.
   public function getNextPage() {
 
-    $page = '';
+    $firstItemIndex = $this->params['firstItemIndex'];
+    $maxItemsCollect = $this->params['maxItemsCollect'];
+    $pageResult = array('currPage' => '', 'firstItemIndex' => $firstItemIndex, 'maxItemsCollect' => $maxItemsCollect);
 
     if ($this->driver === NULL)
       $this->initDriver();
@@ -332,21 +355,38 @@ class Spider {
     $pagination = $this->params['pagination'];
     if ((!array_key_exists('cssSelector', $pagination))
       || (!array_key_exists('nextPage', $pagination))
-      || (!array_key_exists('valueAttr', $pagination))
-      || (!array_key_exists('events', $pagination)))
-      return $page;
+      || (!array_key_exists('filter', $pagination))
+      || (!array_key_exists('events', $pagination))
+      || (!array_key_exists('valueAttr', $pagination)))
+      return $pageResult;
 
     if (($pagination['cssSelector'] == '')
       || ($pagination['nextPage'] == '')
       || ($pagination['valueAttr'] == ''))
-      return $page;
+      return $pageResult;
 
+    if (!doPreCollect($this->params))
+      return $pageResult;
+    // собираем родительские элементы
+    $parentElement = $this->params['parentElement'];
+    $links = $this->getExistingElements($this->driver, $parentElement['cssSelector']);
+    if (!$links)
+      return $pageResult;
+    $count = count($links);
+    // если количество родительских элементов меньше чем $firstItemIndex, то переходим на следующую страницу
+    // так мы доходим до текущей страницы, и увеличиваем $firstItemIndex на оставшиеся количество
+    // текущей страницы, уменьшая при этом на столько же $maxItemsCollect
     $links = $this->driver->findElements(WebDriverBy::cssSelector($pagination['cssSelector']));
     foreach ($links as $link) {
       $nextPage = $this->getExistingElement($link, $pagination['nextPage']);
       if ($nextPage) {
-        $this->doEvents($nextPage, $pagination['events'], $pagination['filter'], $this->params);
-        $page = $nextPage->getAttribute($pagination['valueAttr']);
+        // filters
+        if (!$this->filterIt($nextPage, $pagination['filter']))
+          continue;
+        // do events
+        $this->doEvents($nextPage, $pagination['events'], $this->params);
+        // get data
+        $pageResult['page'] = $nextPage->getAttribute($pagination['valueAttr']);
       }
     }
 
@@ -357,6 +397,39 @@ class Spider {
   public function getStatus() {
     return $this->status;
   } // Spider::getStatus
+  //-----------------------------------------------------
+
+  private function doPreCollect($params, &$result=NULL) {
+
+    try {
+      $mainElement = $params['startPagePreCollect'];
+      if ($mainElement['cssSelector'] != '') {
+        $links = $this->getExistingElements($this->driver, $mainElement['cssSelector']);
+        if (!$links) {
+          echo "find elements before collect error\n";
+          return NULL;
+        }
+        $count = count($links);
+        echo "count of preCollect Links: ".$count."\n";
+        foreach($links as $link) {
+          // filters
+          if (!$this->filterIt($link, $mainElement['filter']))
+            continue;
+          // do events
+          $this->doEvents($link, $mainElement['events'], $params);
+          // get data
+          if (!is_null($result))
+            $this->getValues($link, $mainElement['values'], $valueNum, $result);
+        }
+      }
+      sleep(2);
+    } catch (UnrecognizedExceptionException $uee) {
+      echo $uee->getMessage()."\n";
+      return false;
+    }
+    return true;
+
+  } // Spider::doPreCollect
   //-----------------------------------------------------
 
   public function collect($collectAfterCheck=false, $params=NULL) {
@@ -477,27 +550,29 @@ class Spider {
       if ($valueNum === NULL)
         $valueNum = count($result['values']);
 
-      // 0. events with start page
-      $mainElement = $params['startPagePreCollect'];
-      if ($mainElement['cssSelector'] != '') {
-        $links = $this->getExistingElements($this->driver, $mainElement['cssSelector']);
-        if (!$links) {
-          echo "find elements before collect error\n";
-          return NULL;
-        }
-        $count = count($links);
-        echo "count of preCollect Links: ".$count."\n";
-        foreach($links as $link) {
-          // filters
-          if (!$this->filterIt($link, $mainElement['filter']))
-            continue;
-          // do events
-          $this->doEvents($link, $mainElement['events'], $params);
-          // get data
-          $this->getValues($link, $mainElement['values'], $valueNum, $result);
-        }
-      }
-      sleep(2);
+      if (!doPreCollect($params, $result))
+        throw new UnrecognizedExceptionException();
+      // // 0. events with start page
+      // $mainElement = $params['startPagePreCollect'];
+      // if ($mainElement['cssSelector'] != '') {
+      //   $links = $this->getExistingElements($this->driver, $mainElement['cssSelector']);
+      //   if (!$links) {
+      //     echo "find elements before collect error\n";
+      //     return NULL;
+      //   }
+      //   $count = count($links);
+      //   echo "count of preCollect Links: ".$count."\n";
+      //   foreach($links as $link) {
+      //     // filters
+      //     if (!$this->filterIt($link, $mainElement['filter']))
+      //       continue;
+      //     // do events
+      //     $this->doEvents($link, $mainElement['events'], $params);
+      //     // get data
+      //     $this->getValues($link, $mainElement['values'], $valueNum, $result);
+      //   }
+      // }
+      // sleep(2);
 
       // 1. get parent element
       $parentElement = $params['parentElement'];
