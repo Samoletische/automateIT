@@ -8,6 +8,7 @@
   "collectAllData": false,
   "insertOnly": false,
   "paginationHaveSameAddress": true,
+  "paginationByScroll": true,
   "storage": {"method": "", "param": ""},
   "startPagePreCollect": {
     "waitBetweenEvents": true,

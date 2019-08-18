@@ -78,8 +78,12 @@ if (isset($argv)) { // запуск готового Сборщика из ко�
             if (method_exists($spider, $method)) {
               switch ($method) {
                 case 'setCurrPage':
-                  if (count($commandParams) > 2)
-                    $result = $spider->$method($commandParams[1], $commandParams[2]);
+                  if (count($commandParams) > 4)
+                    $result = $spider->$method($commandParams[1], $commandParams[2], $commandParams[3], $commandParams[4]);
+                  break;
+                case 'setStatus':
+                  if (count($commandParams) > 1)
+                    $result = $spider->$method($commandParams[1]);
                   break;
                 default:
                   $result = $spider->$method();
@@ -121,6 +125,9 @@ else { // команды управления Сборщиком через HTTP
         break;
       case 'getStatus':
         echo json_encode(getStatus($in));
+        break;
+      case 'setStatus':
+        echo json_encode(setStatus($in));
         break;
       case 'setCurrPage':
         echo json_encode(setCurrPage($in));
@@ -216,7 +223,8 @@ function getAnswer($token) {
 
     sleep(1);
   }
-  return $result;
+
+  return json_decode($result, true);
 } // getAnswer
 //-----------------------------------------------------
 
@@ -227,7 +235,8 @@ function setAnswer($token, $answer) {
   while(true) {
     if (!file_exists($filename)) {
       $f = fopen($filename, 'w');
-      fwrite($f, $answer);
+      echo "\n";
+      fwrite($f, json_encode($answer));
       fclose($f);
       $result = true;
       break;
@@ -254,6 +263,21 @@ function getStatus($in) {
   return $result;
 
 } // getStatus
+//-----------------------------------------------------
+
+function setStatus($in) {
+
+  $result = array('result' => NULL);
+
+  if ((array_key_exists('token', $in))
+      && (array_key_exists('status', $in))) {
+    if (sendCommand($in['token'], 'setStatus,'.$in['status']))
+      $result['result'] = getAnswer($in['token']);
+  }
+
+  return $result;
+
+} // setStatus
 //-----------------------------------------------------
 
 function setCurrPage($in) {
