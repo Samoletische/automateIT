@@ -7,7 +7,7 @@ ini_set('error_reporting', E_ALL);
 ini_set('display_errors', 1);
 ini_set('display_startup_errors', 1);
 
-define('TIMEOUT', 40);
+define('TIMEOUT', 80);
 //-----------------------------------------------------
 
 if (isset($argv)) { // запуск готового Сборщика из консоли

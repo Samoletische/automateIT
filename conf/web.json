@@ -5,6 +5,7 @@
   "maxPagesCollect": "",
   "firstItemIndex": 0,
   "maxItemsCollect": 0,
+  "alsoOnCurrentPage": false,
   "collectAllData": false,
   "insertOnly": false,
   "paginationHaveSameAddress": true,

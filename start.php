@@ -1,6 +1,6 @@
 <?php
 $content = file_get_contents('php://input');
-$json = 'conf/runsim21_web.json';
+$json = 'conf/dromLexus_web.json';
 
 // try {
 //   $headers = getallheaders();

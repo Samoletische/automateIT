@@ -37,21 +37,30 @@ abstract class System {
   //  Возвращаемые значения:
   //    array - ответ от php-скрипта в виде параметризированного массива.
   //    Если входящий контент или ответ невозможно кодировать в/декодировать из JSON, то возвращается NULL.
-  static function sendRequest($url, $content) {
+  static function sendRequest($url, $content, $waitForAnswer=true) {
     $json = json_encode($content);
 
     if (json_last_error() === JSON_ERROR_NONE) {
-      $result = json_decode(file_get_contents($url, false, stream_context_create(array(
+      $context = stream_context_create(array(
         'http' => array(
           'method'  => 'POST',
           'header'  => 'Content-type: application/json',
           'content' => $json
         )
-      ))), true);
-      if (json_last_error() === JSON_ERROR_NONE)
-        return $result;
-      else
+      ));
+      //echo "waitForAnswer=$waitForAnswer\n";
+      if ($waitForAnswer) {
+        $result = json_decode(file_get_contents($url, false, $context), true);
+        if (json_last_error() === JSON_ERROR_NONE)
+          return $result;
+        else
+          return NULL;
+      } else {
+        $f = fopen($url, 'r', false, $context);
+        //fpassthru($f);
+        fclose($f);
         return NULL;
+      }
     }
     else
       return NULL;
@@ -201,8 +210,11 @@ class Web {
           echo "getNextPage\n";
           $nextPage = $this->sendCommandToSpider($spider, 'getNextPage');
           print_r($nextPage);
-          if ((isset($nextPage['error'])) || ($nextPage['maxItemsCollect'] < 0)) {
-            echo 'Web: no next page: '.$nextPage['error']." OR maxItemsCollect < 0: ".$nextPage['maxItemsCollect']."\n";
+          if ((array_key_exists('error', $nextPage)) || ($nextPage['maxItemsCollect'] <= 0)) {
+            if (array_key_exists('error', $nextPage))
+              echo 'Web: no next page: '.$nextPage['error']."\n";
+            else
+              echo "Web: maxItemsCollect <= 0: ".$nextPage['maxItemsCollect']."\n";
             $currPage = '';
           }
           else {
@@ -212,9 +224,10 @@ class Web {
           }
           echo "'$currPage' - $firstItemIndex - $maxItemsCollect\n";
 
-          $this->sendCommandToSpider($spider, 'setStatus', array('status' => 'complete'));
-          // echo "collect\n";
-          // $this->sendCommandToSpider($spider, 'collect');
+          //$this->sendCommandToSpider($spider, 'setStatus', array('status' => 'complete'));
+          echo "collect\n";
+          $this->sendCommandToSpider($spider, 'collect');
+
           $lastResponse = time();
         }
       }
@@ -387,6 +400,9 @@ class Spider {
       $this->goToCurrentPage($this->params, $pageResult);
       if (isset($pageResult['error']))
         return $pageResult;
+      $this->params['firstItemIndex'] = $pageResult['currFirstItemIndex'];
+      $this->params['maxItemsCollect'] = $pageResult['currMaxItemsCollect'];
+      $this->params['alsoOnCurrentPage'] = true;
     }
     else {
       echo "Spider: get next page\n";
@@ -454,6 +470,8 @@ class Spider {
         $lastResponse = time();
       } else {
         if (is_array($pageResult)) {
+          $pageResult['currFirstItemIndex'] = $firstItemOnCurrPage;
+          $pageResult['currMaxItemsCollect'] = $maxItemsCollect;
           $pageResult['firstItemIndex'] = $firstItemIndex + $count - $firstItemOnCurrPage;
           $pageResult['maxItemsCollect'] = $maxItemsCollect - $count - $firstItemOnCurrPage;
           echo "this is current page. firstItemIndex=".$pageResult['firstItemIndex'].", maxItemsCollect=".$pageResult['maxItemsCollect']."\n";
@@ -493,6 +511,8 @@ class Spider {
         // do events
         $this->doEvents($nextPage, $pagination['events'], $params);
         echo "do next page: get attr='".$pagination['valueAttr']."'.\n";
+        // scroll to top of page
+        $this->scrollToPageTop();
         // get data
         return $nextPage->getAttribute($pagination['valueAttr']);
       }
@@ -500,6 +520,10 @@ class Spider {
     return NULL;
   } // Spider::doNextPage
   //-----------------------------------------------------
+
+  private function scrollToPageTop() {
+    $this->driver->executeScript("window.scrollTo(0, 0);");
+  } // scrollToPageTop
 
   private function doPreCollect($params, &$result=NULL) {
 
@@ -521,7 +545,7 @@ class Spider {
           $this->doEvents($link, $mainElement['events'], $params);
           // get data
           if (!is_null($result))
-            $this->getValues($link, $mainElement['values'], $valueNum, $result);
+            $this->getValues($link, $mainElement['values'], 0, $result);
         }
       }
       sleep(2);
@@ -549,7 +573,7 @@ class Spider {
     // collect
     try {
       $params = $collectAfterCheck ? $params : $this->params;
-      echo "insertOnly before collect=".$params['insertOnly'];
+      echo "insertOnly before collect=".$params['insertOnly']."\n";
       if ($collectAfterCheck)
         $this->eraseResult($this->result, $params['pageName']);
       if (!$this->collectFromPage($params, $this->result, 0))
@@ -645,15 +669,19 @@ class Spider {
       if ($valueNum === NULL)
         $valueNum = count($result['values']);
 
-      if (!$this->doPreCollect($params, $result))
-        throw new UnrecognizedExceptionException();
+      if (!$params['alsoOnCurrentPage']) {
+        if (!$this->doPreCollect($params, $result))
+          throw new UnrecognizedExceptionException();
 
-      if ($params['paginationHaveSameAddress']) {
-        $pageResult = array('firstItemIndex' => $params['firstItemIndex'], 'maxItemsCollect' => $params['maxItemsCollect']);
-        $this->goToCurrentPage($params, $pageResult);
-        $firstItemIndex = $pageResult['firstItemIndex'];
-        $maxItemsCollect = $pageResult['maxItemsCollect'];
+        if ($params['paginationHaveSameAddress']) {
+          $pageResult = array('firstItemIndex' => $params['firstItemIndex'], 'maxItemsCollect' => $params['maxItemsCollect']);
+          $this->goToCurrentPage($params, $pageResult);
+          $firstItemIndex = $pageResult['currFirstItemIndex'];
+          $maxItemsCollect = $pageResult['currMaxItemsCollect'];
+        }
       }
+
+      echo 'after pre-collect, on current page - firstItemIndex = '.$pageResult['currFirstItemIndex'].', maxItemsCollect = '.$pageResult['currMaxItemsCollect']."\n";
 
       // 1. get parent element
       $parentElement = $params['parentElement'];
@@ -697,7 +725,7 @@ class Spider {
         //for ($index = $currItemIndex; $index < $finishIndex; $index++) {
         for ($index = $firstItemIndex; $index < $finishIndex; $index++) {
         //foreach ($links as $index => $link) {
-
+          echo "index=$index, firstItemIndex=$firstItemIndex, finishIndex=$finishIndex\n";
           if ($index >= $count)
              break;
 
@@ -722,7 +750,7 @@ class Spider {
               $childLinks = $this->getExistingElements($link, $element['cssSelector']);
             else
               $childLinks = $this->getExistingElements($this->driver, $element['cssSelector']);
-            echo date('H:i:s').' - count of child element '.$element['cssSelector'].' = '.count($childLinks);
+            echo date('H:i:s').' - count of child element '.$element['cssSelector'].' = '.count($childLinks)."\n";
             //if (!$childLink) {
             if (!$childLinks) {
               $errorMessage .= $errorMessage == '' ? '' : '; ';
@@ -731,12 +759,16 @@ class Spider {
             }
             foreach ($childLinks as $childLink) {
               // filters
+              echo "filter child\n";
               if (!$this->filterIt($childLink, $element['filter']))
                 continue;
+              echo "event child\n";
               // 2. a) do events
               $this->doEvents($childLink, $element['events'], $params);
+              echo "get value child. valueNum=$valueNum\n";
               // 2. b) get data
               $this->getValues($childLink, $element['values'], $valueNum, $result);
+              echo "getted value\n";
             }
             // 2. c) get data from child page
           }
@@ -810,7 +842,9 @@ class Spider {
         }
 
         echo "for ended, index=$index, maxItemsCollect=$maxItemsCollect\n";
-        if ($maxItemsCollect <= 0)
+        //if ($maxItemsCollect <= 0)
+        // здесь нужно ввести новый параметр "Все страницы в одном Сборщике", тогда определять нужно переходить на
+        // следующую страницу или завершать сбор. Пока завершаем...
           break;
 
         // if ($params['paginationByScroll'])
@@ -819,7 +853,11 @@ class Spider {
         //   break;
       }
     } catch (UnrecognizedExceptionException $uee) {
-      return NULL;
+      echo "UnrecognizedExceptionException: ".$uee->getMessage()."\n";
+      return false;
+    } catch (StaleElementReferenceException $sere) {
+      echo "StaleElementReferenceException: ".$uee->getMessage()."\n";
+      return false;
     }
     return true;
     // echo "results of ".$params['pageName'].":\n";
@@ -827,12 +865,13 @@ class Spider {
   } // Spider::collectFromPage
   //-----------------------------------------------------
 
-  private function scrollToNextPage($links) {
+  private function scrollToElement($link) {
     // $elements = $this->driver->findElements(WebDriverBy::cssSelector($params['pagination']['cssSelector']));
     // echo "result elements=";
     // print_r($elements);
-    $count = count($links);
-    $this->driver->executeScript("arguments[0].scrollIntoView();", array($links[$count - 1]));
+    //$count = count($links);
+    //$this->driver->executeScript("arguments[0].scrollIntoView();", array($links[$count - 1]));
+    $this->driver->executeScript("arguments[0].scrollIntoView();", array($link));
     // $this->driver->executeScript("arguments[0].style.display='block';
     //   alert('class=' + arguments[0].getAttribute('class'));
     //   alert('innerText=' + arguments[0].innerText);
@@ -1047,15 +1086,18 @@ class Spider {
         continue;
 
       // get value
-      if ($params['parentElement']['waitBetweenEvents'])
-        usleep($this->getRandomDelay());
+      // if ($params['parentElement']['waitBetweenEvents'])
+      //   usleep($this->getRandomDelay());
       switch ($event) {
         case 'click':
+          echo "click event\n";
+          //$this->scrollToElement($link);
           $actions = new WebDriverActions($this->driver);
           $actions->moveToElement($link, 10, 5);
-          if ($params['parentElement']['waitBetweenEvents'])
-            usleep(500000);
+          echo "moveToElement\n";
+          echo "before click event\n";
           $link->click();
+          echo "after click event\n";
           break;
         case 'moveToElement':
           $link->moveToElement();
@@ -1063,6 +1105,9 @@ class Spider {
         default:
           echo "no method for event '$event'";
       }
+
+      if ($params['parentElement']['waitBetweenEvents'])
+        usleep(1000000);
     }
 
   } // Spider::doEvents
@@ -1070,8 +1115,10 @@ class Spider {
 
   private function getValues($link, $values, $valueNum, &$result) {
 
+    print_r($values);
     foreach ($values as $value) {
 
+      echo "before check for duplicate value=".$value['fieldName']."\n";
       // check for duplicate fieldname
       $exists = false;
       foreach ($result['values'][$valueNum] as $res)
@@ -1082,6 +1129,7 @@ class Spider {
 
       try {
         // get value
+        echo "get by atrr=".$value['attr']."\n";
         $val = $link->getAttribute($value['attr']);
 
         $result['values'][$valueNum][] = array(
@@ -1092,6 +1140,7 @@ class Spider {
         //echo "current field: ".$value['fieldName']."\ncurrent value: $val\n";
         print_r($result['values'][$valueNum]);
       } catch (NoSuchElementException $e) {
+        echo "NoSuchElementException: ".$e->getMessage();
         continue;
       }
     }

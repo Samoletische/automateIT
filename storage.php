@@ -9,7 +9,7 @@ if (json_last_error() === JSON_ERROR_NONE) {
     echo Storage::save($json, true);
   else
     if ($json['collectAllData'])
-      echo Storage::save($json);
+      echo Storage::save($json, false);
     else
       echo json_encode(Storage::check($json));
 } else

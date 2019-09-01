@@ -112,20 +112,24 @@ abstract class Storage {
     if (is_null($db))
       return false;
 
+    System::insertLog("server: insertOnly=$insertOnly. count of result values=".count($result['values'])."\n");
     foreach ($result['values'] as $record) {
       if (!$insertOnly) {
       	// запрос на проверку уже существующей записи
         $where = '';
       	$queryStr = self::getQueryStrOfIDByIndexesFields($result, $record, $where);
+        System::insertLog("server: check query: $queryStr\n");
       	$query = $db->query($queryStr);
       	if (!$query) {
           echo "Ошибка БД 1: ".$db->error."\n";
           return false;
       	}
+        System::insertLog("server: num rows={$query->num_rows}\n");
       }
     	// если запись уже есть
-      if (!$insertOnly || $query->num_rows > 0) {
+      if (!$insertOnly && ($query->num_rows > 0)) {
         if ($overwrite) {
+          System::insertLog("server: updating record\n");
           // обновляем запись
         	$fields = '';
         	foreach ($record as $res) {
@@ -138,6 +142,7 @@ abstract class Storage {
         	$queryStr = 'UPDATE '.$result['pageName']." SET $fields WHERE $where";
         	//echo $queryStr."\n";
         	$query = $db->query($queryStr);
+          System::insertLog("server: overwrite query: $queryStr\n");
         	if (!$query) {
             echo "Ошибка БД при обновлении записи: ".$db->error."\n";
             return false;
@@ -145,6 +150,7 @@ abstract class Storage {
         } else
           continue;
       } else {
+        System::insertLog("server: insert record\n");
       	// добавляем запись
       	$fields = '';
       	$values = '';
@@ -154,8 +160,9 @@ abstract class Storage {
         	$values .= $values == '' ? "'" : ",'";
         	$values .= $res['value']."'";
       	}
+        System::insertLog("server: insert record\nfileds=$fields\nvalues=$values\n");
       	$queryStr = 'INSERT INTO '.$result['pageName'].'('.$fields.') VALUES('.$values.')';
-      	//echo $queryStr."\n";
+      	System::insertLog("server: insert query: $queryStr\n");
       	$query = $db->query($queryStr);
       	if (!$query) {
           echo "Ошибка БД при добавлении записи: ".$db->error."\n";
