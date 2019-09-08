@@ -79,7 +79,7 @@ if (isset($argv)) { // запуск готового Сборщика из ко�
               switch ($method) {
                 case 'setCurrPage':
                   if (count($commandParams) > 4)
-                    $result = $spider->$method($commandParams[1], $commandParams[2], $commandParams[3], $commandParams[4]);
+                    $result = $spider->$method($commandParams[1], $commandParams[2], $commandParams[3], $commandParams[4], true);
                   break;
                 case 'setStatus':
                   if (count($commandParams) > 1)

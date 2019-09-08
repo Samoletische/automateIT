@@ -10,6 +10,7 @@
   "insertOnly": false,
   "paginationHaveSameAddress": true,
   "paginationByScroll": true,
+  "allPagesInOneSpider": true,
   "storage": {"method": "", "param": ""},
   "startPagePreCollect": {
     "waitBetweenEvents": true,

@@ -318,9 +318,10 @@ class Spider {
   } // Spider::ReadyToUse
   //-----------------------------------------------------
 
-  public function setCurrPage($page, $pageNum, $firstItemIndex, $maxItemsCollect) {
+  public function setCurrPage($page, $pageNum, $firstItemIndex, $maxItemsCollect, $changeStatus=false) {
 
-    $this->status = 'setting current page';
+    if ($changeStatus)
+      $this->status = 'setting current page';
 
     $this->currPage = $page;
     $this->currPageNum = $pageNum;
@@ -371,12 +372,11 @@ class Spider {
   //  В случае ошибок вернутся те же данные, что и пришли.
   public function getNextPage() {
 
-    $this->status = 'setting current page';
+    $this->status = 'getting current page';
 
-    $pageResult = array('currPage' => $this->params['startPage'], 'firstItemIndex' => $this->params['firstItemIndex'], 'maxItemsCollect' => $this->params['maxItemsCollect']);
-
-    if ($this->driver === NULL)
-      $this->initDriver();
+    $pageResult = array('currPage' => '', 'firstItemIndex' => $this->params['firstItemIndex'], 'maxItemsCollect' => $this->params['maxItemsCollect']);
+    if ($this->params['paginationHaveSameAddress'])
+      $pageResult = $this->params['startPage'];
 
     $pagination = $this->params['pagination'];
 
@@ -387,6 +387,12 @@ class Spider {
       $pageResult['error'] = 'nesessary fields are empty';
       return $pageResult;
     }
+
+    if ($this->params['allPagesInOneSpider'])
+      return $pageResult;
+
+    if ($this->driver === NULL)
+      $this->initDriver();
 
     echo "Spider: do pre-collect\n";
     if (!$this->doPreCollect($this->params)) {
@@ -462,7 +468,7 @@ class Spider {
         $firstItemOnCurrPage -= $params['paginationByScroll'] ? 0 : $count;
         echo "go to next page: count=$count, firstItemOnCurrPage=$firstItemOnCurrPage, maxItemsCollect=$maxItemsCollect\n";
         echo "do next page\n";
-        $resNextPage = $this->doNextPage();
+        $resNextPage = $this->doNextPage($params);
         if (is_null($resNextPage)) {
           $pageResult['error'] = 'can not go to current page';
           return false;
@@ -637,6 +643,8 @@ class Spider {
       return;
     else {
       $this->eraseResult($this->result, $this->params['pageName']);
+      echo "collect from next page...\n";
+      $this->collect(false, $params); // collect from next page
       echo "complete\n";
       $this->complete();
     }
@@ -702,21 +710,6 @@ class Spider {
           $result['values'][$valueNum][] = array( 'name' => 'error', 'value' => "parent elements by '".$parentElement['cssSelector']."' not found" );
           return true;
         }
-
-        // $currItemIndex = $firstItemIndex;
-
-        // // for pagination with scroll event
-        // if ($params['paginationByScroll']) {
-        //   if ($count == $count_last)
-        //     break;
-        //   echo "for scroll, $count_last - $count - $firstItemIndex\n";
-        //   $count_last = $count;
-        //   if ($count > $firstItemIndex) {
-        //     echo "befor $firstItemIndex - ";
-        //     $firstItemIndex = $count;
-        //     echo "after $firstItemIndex\n";
-        //   }
-        // }
 
         // $finishIndex = $currItemIndex + $maxItemsCollect;
         $finishIndex = $firstItemIndex + $maxItemsCollect;
@@ -841,22 +834,47 @@ class Spider {
 
         }
 
+        // go to next page
         echo "for ended, index=$index, maxItemsCollect=$maxItemsCollect\n";
-        //if ($maxItemsCollect <= 0)
-        // здесь нужно ввести новый параметр "Все страницы в одном Сборщике", тогда определять нужно переходить на
-        // следующую страницу или завершать сбор. Пока завершаем...
+        if (!$params['allPagesInOneSpider']) {
+          $this->currPage = '';
           break;
+        }
 
-        // if ($params['paginationByScroll'])
-        //   $this->scrollToNextPage($links);
-        // else
-        //   break;
+        // у нас три варианта пагинаторов:
+        // - новый контент появляется когда доскролим до конца
+        // - новый контент подгружается ajax'ом, адрес траницы при этом не меняется.
+        // Сюда же относятся страницы, где контент появляется по кнопке "Ещё", например.
+        // - классический пагинатор: берём адрес следующей страницы из кнопки "Следующая".
+        $params['alsoOnCurrentPage'] = true;
+        if ($params['paginationByScroll'])
+          $this->scrollToElement($link);
+        elseif ($params['paginationHaveSameAddress']) {
+          $pageResult = array('firstItemIndex' => $index, 'maxItemsCollect' => $maxItemsCollect);
+          if (!$this->goToCurrentPage($params, $pageResult)) {
+            $this->currPage = '';
+            break;
+          }
+          $firstItemIndex = $pageResult['currFirstItemIndex'];
+          $maxItemsCollect = $pageResult['currMaxItemsCollect'];
+        } else {
+          $resNextPage = $this->doNextPage($params);
+          if (is_null($resNextPage)) {
+            $this->currPage = '';
+            break;
+          }
+          $this->setCurrPage($resNextPage, ++$this->currPageNum, $index, $maxItemsCollect);
+          $this->currPage = $this->driver->get($this->currPage);
+          $params['alsoOnCurrentPage'] = false;
+        }
       }
     } catch (UnrecognizedExceptionException $uee) {
       echo "UnrecognizedExceptionException: ".$uee->getMessage()."\n";
+      $this->currPage = '';
       return false;
     } catch (StaleElementReferenceException $sere) {
       echo "StaleElementReferenceException: ".$uee->getMessage()."\n";
+      $this->currPage = '';
       return false;
     }
     return true;

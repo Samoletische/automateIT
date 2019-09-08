@@ -10,6 +10,7 @@
   "insertOnly": false,                                          // по-умолчанию = false. Устанавливается в true ТОЛЬКО после проверки данных в БД при наличии новых данных. При этом новые данные (индексных полей) прописываются в фильтры.
   "paginationHaveSameAddress": true,                            // адрес у страницы может вообще не меняться (всё на ajax'е, как я люблю). В таком случае (true) управляем взятие следующей страницы через параметры firstItemIndex и maxItemsCollect
   "paginationByScroll": true,                                   // показ (подгрузка) следующих элементов осуществляется скролингом вниз
+  "allPagesInOneSpider": true,                                  // true - все страницы собираются одним Сборщиком; false - каждая страница собирается отдельным Сборщиком
   "storage": {
     "method": "DB",
     "param": "insta_bil_edward?ven=vendor_title,prod=prod_title"
