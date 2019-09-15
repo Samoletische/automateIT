@@ -661,7 +661,7 @@ class Spider {
   } // Spider::eraseResult
   //-----------------------------------------------------
 
-  private function collectFromPage($params, &$result, $valueNum=NULL) {
+private function collectFromPage($params, &$result, $valueNum=NULL) {
 
     if ($this->driver === NULL)
       $this->initDriver();
@@ -689,31 +689,32 @@ class Spider {
         }
       }
 
-      echo 'after pre-collect, on current page - firstItemIndex = '.$pageResult['currFirstItemIndex'].', maxItemsCollect = '.$pageResult['currMaxItemsCollect']."\n";
+      //echo 'after pre-collect, on current page - firstItemIndex = '.$pageResult['currFirstItemIndex'].', maxItemsCollect = '.$pageResult['currMaxItemsCollect']."\n";
 
       // 1. get parent element
       $parentElement = $params['parentElement'];
       echo date('H:i:s')." - parent css: ".$parentElement['cssSelector']."\n";
-      while (true) {
+  //    while (true) {
         //$links = $this->driver->findElements(WebDriverBy::cssSelector($parentElement['cssSelector']));
         //echo 'current URL - '.$this->driver->getCurrentUrl()."\n";
         $links = $this->getExistingElements($this->driver, $parentElement['cssSelector']);
         if (!$links) {
           echo "find parent elements error\n";
-          break;
+          //break;
+          return false;
         }
 
         $count = count($links);
         echo "count of Links: ".$count."\n";
 
         if ($count == 0) {
-          $result['values'][$valueNum][] = array( 'name' => 'error', 'value' => "parent elements by '".$parentElement['cssSelector']."' not found" );
+          //$result['values'][$valueNum][] = array( 'name' => 'error', 'value' => "parent elements by '".$parentElement['cssSelector']."' not found" );
           return true;
         }
 
         // $finishIndex = $currItemIndex + $maxItemsCollect;
         $finishIndex = $firstItemIndex + $maxItemsCollect;
-        // echo "scrollPage=".$params['paginationByScroll'].", currItemIndex=$currItemIndex, finishIndex=$finishIndex\n";
+        echo "scrollPage=".$params['paginationByScroll'].", currItemIndex=$firstItemIndex, finishIndex=$finishIndex\n";
 
         //for ($index = $currItemIndex; $index < $finishIndex; $index++) {
         for ($index = $firstItemIndex; $index < $finishIndex; $index++) {
@@ -721,6 +722,8 @@ class Spider {
           echo "index=$index, firstItemIndex=$firstItemIndex, finishIndex=$finishIndex\n";
           if ($index >= $count)
              break;
+
+          $result['values'][] = array();
 
           $link = $links[$index];
           $errorMessage = '';
@@ -732,7 +735,7 @@ class Spider {
           $childElements = $params['childElements'];
           // 1. b) get data
           echo "values of parentElement:\n";
-          print_r($parentElement['values']);
+          //print_r($parentElement['values']);
           $this->getValues($link, $parentElement['values'], $valueNum, $result);
           // 1. c) get data from child page
 
@@ -752,16 +755,16 @@ class Spider {
             }
             foreach ($childLinks as $childLink) {
               // filters
-              echo "filter child\n";
+              //echo "filter child\n";
               if (!$this->filterIt($childLink, $element['filter']))
                 continue;
-              echo "event child\n";
+              //echo "event child\n";
               // 2. a) do events
               $this->doEvents($childLink, $element['events'], $params);
-              echo "get value child. valueNum=$valueNum\n";
+              //echo "get value child. valueNum=$valueNum\n";
               // 2. b) get data
               $this->getValues($childLink, $element['values'], $valueNum, $result);
-              echo "getted value\n";
+              //echo "getted value\n";
             }
             // 2. c) get data from child page
           }
@@ -832,13 +835,20 @@ class Spider {
           $valueNum++;
           --$maxItemsCollect;
 
+          if ($maxItemsCollect <= 0) {
+            $this->currPage = '';
+            //break;
+            return true;
+          }
+
         }
 
         // go to next page
         echo "for ended, index=$index, maxItemsCollect=$maxItemsCollect\n";
         if (!$params['allPagesInOneSpider']) {
           $this->currPage = '';
-          break;
+          //break;
+          return false;
         }
 
         // у нас три варианта пагинаторов:
@@ -853,7 +863,8 @@ class Spider {
           $pageResult = array('firstItemIndex' => $index, 'maxItemsCollect' => $maxItemsCollect);
           if (!$this->goToCurrentPage($params, $pageResult)) {
             $this->currPage = '';
-            break;
+            //break;
+            return false;
           }
           $firstItemIndex = $pageResult['currFirstItemIndex'];
           $maxItemsCollect = $pageResult['currMaxItemsCollect'];
@@ -861,13 +872,15 @@ class Spider {
           $resNextPage = $this->doNextPage($params);
           if (is_null($resNextPage)) {
             $this->currPage = '';
-            break;
+            //break;
+            return false;
           }
-          $this->setCurrPage($resNextPage, ++$this->currPageNum, $index, $maxItemsCollect);
+          $this->setCurrPage($resNextPage, ++$this->currPageNum, $params['allPagesInOneSpider'] ? 0 : $index, $maxItemsCollect);
           $this->currPage = $this->driver->get($this->currPage);
           $params['alsoOnCurrentPage'] = false;
         }
-      }
+//        break;
+//      }
     } catch (UnrecognizedExceptionException $uee) {
       echo "UnrecognizedExceptionException: ".$uee->getMessage()."\n";
       $this->currPage = '';
@@ -1047,6 +1060,7 @@ class Spider {
         $result['insertOnly'] = $params['insertOnly'];
 
         echo "send to storage:\n";
+        echo "count of result = ".count($result['values'])."\n";
         print_r($result);
         $echo = file_get_contents($storageURL, false, stream_context_create(array(
           'http' => array(
@@ -1072,7 +1086,7 @@ class Spider {
 
   private function filterIt($link, $filters) {
     $result = true;
-    echo "start filtering. Count = ".count($filters)."\n";
+    //echo "start filtering. Count = ".count($filters)."\n";
     foreach ($filters as $filter) {
       //echo "filter = '".$filter['value']."'\n";
       if (count($filter['value']) == 0)
@@ -1081,14 +1095,14 @@ class Spider {
       //$valueExists = false;
       $valueExists = $filter['xor'];
       foreach($filter['value'] as $filterValue) {
-        echo "$filterValue - $linkValue\n";
+        //echo "$filterValue - $linkValue\n";
         // if ((!$filter['xor'] && ($filterValue == $linkValue))
         //     || ($filter['xor'] && ($filterValue != $linkValue)))
         if ($filterValue == $linkValue)
           //$valueExists = true;
           $valueExists = !$filter['xor'];
       }
-      echo "valueExists = $valueExists\n";
+      //echo "valueExists = $valueExists\n";
       if (!$valueExists)
         $result = false;
     }
@@ -1133,12 +1147,15 @@ class Spider {
 
   private function getValues($link, $values, $valueNum, &$result) {
 
-    print_r($values);
+    //print_r($values);
     foreach ($values as $value) {
 
-      echo "before check for duplicate value=".$value['fieldName']."\n";
+      //echo "before check for duplicate value=".$value['fieldName']."\n";
       // check for duplicate fieldname
       $exists = false;
+      //echo "valueNum in getValue=$valueNum\n";
+      if (!array_key_exists('values', $result) && !array_key_exists($valueNum, $result['values']))
+        return false;
       foreach ($result['values'][$valueNum] as $res)
         if ($res['name'] == $value['fieldName'])
           $exists = true;
@@ -1147,7 +1164,7 @@ class Spider {
 
       try {
         // get value
-        echo "get by atrr=".$value['attr']."\n";
+        //echo "get by atrr=".$value['attr']."\n";
         $val = $link->getAttribute($value['attr']);
 
         $result['values'][$valueNum][] = array(
@@ -1156,7 +1173,7 @@ class Spider {
         );
 
         //echo "current field: ".$value['fieldName']."\ncurrent value: $val\n";
-        print_r($result['values'][$valueNum]);
+        //print_r($result['values'][$valueNum]);
       } catch (NoSuchElementException $e) {
         echo "NoSuchElementException: ".$e->getMessage();
         continue;

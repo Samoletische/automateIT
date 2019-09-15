@@ -5,6 +5,7 @@ $json = json_decode(file_get_contents('php://input'), true);
 if (json_last_error() === JSON_ERROR_NONE) {
   System::insertLog("storage.php: insertOnly=".$json['insertOnly']);
   System::insertLog("storage.php: collectAllData=".$json['collectAllData']);
+  System::insertLog("storage.php: income count of values=".count($json['values']));
   if ($json['insertOnly'])
     echo Storage::save($json, true);
   else
