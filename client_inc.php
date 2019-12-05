@@ -334,6 +334,9 @@ class Spider {
   //-----------------------------------------------------
 
   private function initDriver() {
+    if (!$this->params['needInteractive'])
+      return;
+
     global $serverSelenium;
 
     $capabilities = array(
@@ -394,26 +397,30 @@ class Spider {
     if ($this->driver === NULL)
       $this->initDriver();
 
-    echo "Spider: do pre-collect\n";
-    if (!$this->doPreCollect($this->params)) {
-      $pageResult['error'] = 'bad pre-collect events';
-      return $pageResult;
-    }
-
-    echo 'paginationHaveSameAddress='.$this->params['paginationHaveSameAddress']."\n";
-    if ($this->params['paginationHaveSameAddress']) {
-      echo "Spider: go to current page\n";
-      $this->goToCurrentPage($this->params, $pageResult);
-      if (isset($pageResult['error']))
+    if ($this->params['needInteractive']) {
+      echo "Spider: do pre-collect\n";
+      if (!$this->doPreCollect($this->params)) {
+        $pageResult['error'] = 'bad pre-collect events';
         return $pageResult;
-      $this->params['firstItemIndex'] = $pageResult['currFirstItemIndex'];
-      $this->params['maxItemsCollect'] = $pageResult['currMaxItemsCollect'];
-      $this->params['alsoOnCurrentPage'] = true;
-    }
-    else {
-      echo "Spider: get next page\n";
-      $resNextPage = $this->doNextPage();
-      $pageResult['currPage'] = is_null($resNextPage) ? '' : $resNextPage;
+      }
+
+      echo 'paginationHaveSameAddress='.$this->params['paginationHaveSameAddress']."\n";
+      if ($this->params['paginationHaveSameAddress']) {
+        echo "Spider: go to current page\n";
+        $this->goToCurrentPage($this->params, $pageResult);
+        if (isset($pageResult['error']))
+          return $pageResult;
+        $this->params['firstItemIndex'] = $pageResult['currFirstItemIndex'];
+        $this->params['maxItemsCollect'] = $pageResult['currMaxItemsCollect'];
+        $this->params['alsoOnCurrentPage'] = true;
+      }
+      else {
+        echo "Spider: get next page\n";
+        $resNextPage = $this->doNextPage();
+        $pageResult['currPage'] = is_null($resNextPage) ? '' : $resNextPage;
+      }
+    } else {
+      // получение следующей страницы с помощью PHPQuery
     }
 
     return $pageResult;
@@ -664,10 +671,149 @@ class Spider {
   } // Spider::eraseResult
   //-----------------------------------------------------
 
-  private function collectFromPage(&$params, &$result, $valueNum=NULL) {
+  private function collectFromPageStatic(&$params, &$result, $valueNum=NULL) {
 
-    if ($this->driver === NULL)
-      $this->initDriver();
+    $pageText = new Curl();
+    $page = phpQuery::newDocument($pageText->get_page($this->currPage));
+    $elements = $page->find($params['parentElement']['cssSelector']);
+
+    $count = count($elements->elements);
+    $countS = count($elements);
+    $firstItemIndex = $params['firstItemIndex'];
+    $maxItemsCollect = $params['maxItemsCollect'];
+    $finishIndex = $firstItemIndex + $maxItemsCollect;
+
+    echo "count=$count, countS=$countS, currItemIndex=$firstItemIndex, finishIndex=$finishIndex\n";
+
+    for ($index = $firstItemIndex; $index < $finishIndex; $index++) {
+      echo date('H:i:s')." - index=$index, firstItemIndex=$firstItemIndex, finishIndex=$finishIndex\n";
+      if ($index >= $count)
+         break;
+
+      $result['values'][] = array();
+
+      $element = $elements[$index];
+      $errorMessage = '';
+      // filters
+      if (!$this->filterIt($link, $parentElement['filter']))
+        continue;
+      // 1. a) do events
+      $this->doEvents($link, $parentElement['events'], $params);
+      $childElements = $params['childElements'];
+      // 1. b) get data
+      echo date('H:i:s')." - values of parentElement:\n";
+      //print_r($parentElement['values']);
+      $this->getValues($link, $parentElement['values'], $valueNum, $result);
+      // 1. c) get data from child page
+
+      // 2. collect data from child elements
+      foreach ($childElements['elements'] as $element) {
+        if ($element['fromParent'])
+          //$childLink = $this->getExistingElement($link, $element['cssSelector']);
+          $childLinks = $this->getExistingElements($link, $element['cssSelector'], "ChildFromParent");
+        else
+          $childLinks = $this->getExistingElements($this->driver, $element['cssSelector'], "ChildFromTop");
+        //echo date('H:i:s').' - count of child element '.$element['cssSelector'].' = '.count($childLinks)."\n";
+        //if (!$childLink) {
+        if (!$childLinks) {
+          $errorMessage .= $errorMessage == '' ? '' : '; ';
+          $errorMessage .= "find child elements error: ";
+          continue;
+        }
+        foreach ($childLinks as $childLink) {
+          // filters
+          //echo "filter child\n";
+          if (!$this->filterIt($childLink, $element['filter']))
+            continue;
+          //echo "event child\n";
+          // 2. a) do events
+          $this->doEvents($childLink, $element['events'], $params);
+          //echo "get value child. valueNum=$valueNum\n";
+          // 2. b) get data
+          $this->getValues($childLink, $element['values'], $valueNum, $result);
+          //echo "getted value\n";
+        }
+        // 2. c) get data from child page
+      }
+
+      // 3. collect from child pages
+      echo date('H:i:s').' - count of child pages='.count($parentElement['childPages'])."\n";
+      foreach ($parentElement['childPages'] as $childPageIndex => $childPage) {
+
+        echo "start collect from child page\n";
+        // get href of child page
+        $childPagelink = $this->getExistingElement($link, $childPage['cssSelector']);
+        if (!$childPagelink) {
+          $errorMessage .= $errorMessage == '' ? '' : '; ';
+          $errorMessage .= "find child pages error: ";
+          continue;
+        }
+        if ($childPage['attr'] == 'text')
+          $href = $childPagelink->getText();
+        else
+          $href = $childPagelink->getAttribute($childPage['attr']);
+
+        echo "child href: $href\n";
+
+        // find params for child page
+        $childParams = NULL;
+        foreach ($params['childPages'] as $childPageParams) {
+          echo $childPageParams['pageName']." - ".$childPage['pageName']."\n";
+          if ($childPageParams['pageName'] == $childPage['pageName']) {
+            $childParams = $childPageParams;
+            break;
+          }
+        }
+
+        if ($childParams !== NULL) {
+          // create new tab this new URL by href and switch to it
+          $oldTab = $this->driver->getWindowHandle();
+          echo "oldTab handle: ".$oldTab."\n";
+          $this->driver->ExecuteScript("window.open('".$href."','_blank');");
+          $tabs = $this->driver->getWindowHandles();
+          $newTab = $tabs[count($tabs) - 1]; // если возвращаются в порядке открытия
+          echo "newTab handle: ".$newTab."\n";
+          $this->driver->switchTo()->window($newTab);
+
+          // prepare results and collect
+          echo $params['storage']['method']."-".$childParams['storage']['method']."\n";
+          if (($params['storage']['method'] == "DB") && ($childParams['storage']['method'] == "DB")) {
+            $storageParent = explode('?', $params['storage']['param']);
+            $storageChild = explode('?', $childParams['storage']['param']);
+
+            echo $storageParent[0]."-".$storageChild[0]."\n";
+            if ($storageParent[0] == $storageChild[0])
+              $childResult = &$result;
+            else {
+              $childResult = &$result["childPages"][$childPageIndex];
+              $this->eraseResult($childResult, $childParams['pageName']);
+            }
+
+            echo "collect from child page\n";
+            $this->collectFromPageDynamic($childParams, $childResult, $valueNum);
+          }
+
+          $this->driver->close();
+          $this->driver->switchTo()->window($oldTab);
+        }
+      }
+
+      //$result['values'][$valueNum++][] = array( 'name' => 'error', 'value' => $errorMessage );
+      $valueNum++;
+      --$maxItemsCollect;
+
+      if ($maxItemsCollect <= 0) {
+        $this->currPage = '';
+        //break;
+        return true;
+      }
+
+    }
+
+  } // Spider::collectFromPageStatic
+  //-----------------------------------------------------
+
+  private function collectFromPageDynamic(&$params, &$result, $valueNum=NULL) {
 
     $firstItemIndex = $params['firstItemIndex'];
     $maxItemsCollect = $params['maxItemsCollect'];
@@ -827,7 +973,7 @@ class Spider {
                 }
 
                 echo "collect from child page\n";
-                $this->collectFromPage($childParams, $childResult, $valueNum);
+                $this->collectFromPageDynamic($childParams, $childResult, $valueNum);
               }
 
               $this->driver->close();
@@ -907,6 +1053,18 @@ class Spider {
     return true;
     // echo "results of ".$params['pageName'].":\n";
     // print_r($result);
+  } // Spider::collectFromPageDynamic
+  //-----------------------------------------------------
+
+  private function collectFromPage(&$params, &$result, $valueNum=NULL) {
+
+    if ($params['needInteractive'])
+      return collectFromPageDynamic($params, $result, $valueNum);
+    else
+      return collectFromPageStatic($params, $result, $valueNum);
+    if ($this->driver === NULL)
+      $this->initDriver();
+
   } // Spider::collectFromPage
   //-----------------------------------------------------
 
