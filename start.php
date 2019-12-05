@@ -1,6 +1,6 @@
 <?php
 $content = file_get_contents('php://input');
-$json = 'conf/dromLexus_web.json';
+$json = 'conf/econCalendar_web.json';
 
 // try {
 //   $headers = getallheaders();

@@ -181,7 +181,7 @@ class Web {
     $maxItemsCollect = $this->params['maxItemsCollect'];
 
     while (true) {
-      sleep(1);
+      //sleep(1);
 
       foreach($this->spiders as $spider) {
 
@@ -376,7 +376,7 @@ class Spider {
 
     $pageResult = array('currPage' => '', 'firstItemIndex' => $this->params['firstItemIndex'], 'maxItemsCollect' => $this->params['maxItemsCollect']);
     if ($this->params['paginationHaveSameAddress'])
-      $pageResult = $this->params['startPage'];
+      $pageResult['currPage'] = $this->params['startPage'];
 
     $pagination = $this->params['pagination'];
 
@@ -449,12 +449,12 @@ class Spider {
 
     $firstItemIndex = $params['firstItemIndex'];
     $firstItemOnCurrPage = $firstItemIndex;
-    $maxItemsCollect = $params['maxItemsCollect'];
+    $maxItemsCollect = $params['maxItemsCollect'] + $firstItemIndex;
     $parentElement = $params['parentElement'];
 
     $lastResponse = time();
     while (true) {
-      $links = $this->getExistingElements($this->driver, $parentElement['cssSelector']);
+      $links = $this->getExistingElements($this->driver, $parentElement['cssSelector'], "goToCurrentPage");
       if (!$links) {
         $pageResult['error'] = 'can not find pre collect cssSelector for parent element';
         return false;
@@ -479,13 +479,14 @@ class Spider {
           $pageResult['currFirstItemIndex'] = $firstItemOnCurrPage;
           $pageResult['currMaxItemsCollect'] = $maxItemsCollect;
           $pageResult['firstItemIndex'] = $firstItemIndex + $count - $firstItemOnCurrPage;
-          $pageResult['maxItemsCollect'] = $maxItemsCollect - $count - $firstItemOnCurrPage;
+          $pageResult['maxItemsCollect'] = $maxItemsCollect - $count;// - $firstItemOnCurrPage;
+          echo "this is current page. currFirstItemIndex=".$pageResult['currFirstItemIndex'].", currMaxItemsCollect=".$pageResult['currMaxItemsCollect']."\n";
           echo "this is current page. firstItemIndex=".$pageResult['firstItemIndex'].", maxItemsCollect=".$pageResult['maxItemsCollect']."\n";
         }
         break;
       }
 
-      sleep(1);
+      //sleep(1);
 
       if ($lastResponse + self::PAGE_LOAD_TIMEOUT < time()) {
         $pageResult['error'] = 'timeout when trying to go to current page';
@@ -506,11 +507,11 @@ class Spider {
     $links = $this->driver->findElements(WebDriverBy::cssSelector($pagination['cssSelector']));
     echo "do next page: count of pagination element=".count($links)."\n";
     foreach ($links as $link) {
-      echo "do next page: get nextPage='".$pagination['nextPage']."' in ".$link->getAttribute('textContent').".\n";
+      //echo "do next page: get nextPage='".$pagination['nextPage']."' in ".$link->getAttribute('textContent').".\n";
       $nextPage = $this->getExistingElement($link, $pagination['nextPage']);
       if ($nextPage) {
         // filters
-        echo "do next page: current nextPage=".$nextPage->getAttribute('textContent').". checking filter.\n";
+        //echo "do next page: current nextPage=".$nextPage->getAttribute('textContent').". checking filter.\n";
         if (!$this->filterIt($nextPage, $pagination['filter']))
           continue;
         echo "do next page: do events.\n";
@@ -518,7 +519,7 @@ class Spider {
         $this->doEvents($nextPage, $pagination['events'], $params);
         echo "do next page: get attr='".$pagination['valueAttr']."'.\n";
         // scroll to top of page
-        $this->scrollToPageTop();
+        //$this->scrollToPageTop();
         // get data
         return $nextPage->getAttribute($pagination['valueAttr']);
       }
@@ -536,7 +537,7 @@ class Spider {
     try {
       $mainElement = $params['startPagePreCollect'];
       if ($mainElement['cssSelector'] != '') {
-        $links = $this->getExistingElements($this->driver, $mainElement['cssSelector']);
+        $links = $this->getExistingElements($this->driver, $mainElement['cssSelector'], "scrollToPageTop");
         if (!$links) {
           echo "find elements before collect error\n";
           return NULL;
@@ -554,7 +555,7 @@ class Spider {
             $this->getValues($link, $mainElement['values'], 0, $result);
         }
       }
-      sleep(2);
+      //sleep(2);
     } catch (UnrecognizedExceptionException $uee) {
       echo $uee->getMessage()."\n";
       return false;
@@ -564,7 +565,7 @@ class Spider {
   } // Spider::doPreCollect
   //-----------------------------------------------------
 
-  public function collect($collectAfterCheck=false, $params=NULL) {
+  public function collect($collectAfterCheck=false, &$params=NULL) {
     $this->status = 'collecting';
     // $pcurrPage = $this->currPage;
     // $lastPage = '';
@@ -578,7 +579,8 @@ class Spider {
 
     // collect
     try {
-      $params = $collectAfterCheck ? $params : $this->params;
+      //$params = $collectAfterCheck ? $params : $this->params;
+      $params = is_null($params) ? $this->params : $params;
       echo "insertOnly before collect=".$params['insertOnly']."\n";
       if ($collectAfterCheck)
         $this->eraseResult($this->result, $params['pageName']);
@@ -644,6 +646,7 @@ class Spider {
     else {
       $this->eraseResult($this->result, $this->params['pageName']);
       echo "collect from next page...\n";
+      echo "(collect) alsoOnCurrentPage=".$params['alsoOnCurrentPage']."\n";
       $this->collect(false, $params); // collect from next page
       echo "complete\n";
       $this->complete();
@@ -661,7 +664,7 @@ class Spider {
   } // Spider::eraseResult
   //-----------------------------------------------------
 
-private function collectFromPage($params, &$result, $valueNum=NULL) {
+  private function collectFromPage(&$params, &$result, $valueNum=NULL) {
 
     if ($this->driver === NULL)
       $this->initDriver();
@@ -677,6 +680,7 @@ private function collectFromPage($params, &$result, $valueNum=NULL) {
       if ($valueNum === NULL)
         $valueNum = count($result['values']);
 
+      echo "(collectFromPage) alsoOnCurrentPage=".$params['alsoOnCurrentPage']."\n";
       if (!$params['alsoOnCurrentPage']) {
         if (!$this->doPreCollect($params, $result))
           throw new UnrecognizedExceptionException();
@@ -697,7 +701,7 @@ private function collectFromPage($params, &$result, $valueNum=NULL) {
   //    while (true) {
         //$links = $this->driver->findElements(WebDriverBy::cssSelector($parentElement['cssSelector']));
         //echo 'current URL - '.$this->driver->getCurrentUrl()."\n";
-        $links = $this->getExistingElements($this->driver, $parentElement['cssSelector']);
+        $links = $this->getExistingElements($this->driver, $parentElement['cssSelector'], "parentElement");
         if (!$links) {
           echo "find parent elements error\n";
           //break;
@@ -719,7 +723,7 @@ private function collectFromPage($params, &$result, $valueNum=NULL) {
         //for ($index = $currItemIndex; $index < $finishIndex; $index++) {
         for ($index = $firstItemIndex; $index < $finishIndex; $index++) {
         //foreach ($links as $index => $link) {
-          echo "index=$index, firstItemIndex=$firstItemIndex, finishIndex=$finishIndex\n";
+          echo date('H:i:s')." - index=$index, firstItemIndex=$firstItemIndex, finishIndex=$finishIndex\n";
           if ($index >= $count)
              break;
 
@@ -734,7 +738,7 @@ private function collectFromPage($params, &$result, $valueNum=NULL) {
           $this->doEvents($link, $parentElement['events'], $params);
           $childElements = $params['childElements'];
           // 1. b) get data
-          echo "values of parentElement:\n";
+          echo date('H:i:s')." - values of parentElement:\n";
           //print_r($parentElement['values']);
           $this->getValues($link, $parentElement['values'], $valueNum, $result);
           // 1. c) get data from child page
@@ -743,10 +747,10 @@ private function collectFromPage($params, &$result, $valueNum=NULL) {
           foreach ($childElements['elements'] as $element) {
             if ($element['fromParent'])
               //$childLink = $this->getExistingElement($link, $element['cssSelector']);
-              $childLinks = $this->getExistingElements($link, $element['cssSelector']);
+              $childLinks = $this->getExistingElements($link, $element['cssSelector'], "ChildFromParent");
             else
-              $childLinks = $this->getExistingElements($this->driver, $element['cssSelector']);
-            echo date('H:i:s').' - count of child element '.$element['cssSelector'].' = '.count($childLinks)."\n";
+              $childLinks = $this->getExistingElements($this->driver, $element['cssSelector'], "ChildFromTop");
+            //echo date('H:i:s').' - count of child element '.$element['cssSelector'].' = '.count($childLinks)."\n";
             //if (!$childLink) {
             if (!$childLinks) {
               $errorMessage .= $errorMessage == '' ? '' : '; ';
@@ -770,7 +774,7 @@ private function collectFromPage($params, &$result, $valueNum=NULL) {
           }
 
           // 3. collect from child pages
-          echo 'count of child pages='.count($parentElement['childPages'])."\n";
+          echo date('H:i:s').' - count of child pages='.count($parentElement['childPages'])."\n";
           foreach ($parentElement['childPages'] as $childPageIndex => $childPage) {
 
             echo "start collect from child page\n";
@@ -860,14 +864,24 @@ private function collectFromPage($params, &$result, $valueNum=NULL) {
         if ($params['paginationByScroll'])
           $this->scrollToElement($link);
         elseif ($params['paginationHaveSameAddress']) {
+          echo "paginationHaveSameAddress. goToCurrentPage: index=$index, maxItemsCollect=$maxItemsCollect\n";
           $pageResult = array('firstItemIndex' => $index, 'maxItemsCollect' => $maxItemsCollect);
           if (!$this->goToCurrentPage($params, $pageResult)) {
             $this->currPage = '';
             //break;
             return false;
           }
-          $firstItemIndex = $pageResult['currFirstItemIndex'];
-          $maxItemsCollect = $pageResult['currMaxItemsCollect'];
+          // $firstItemIndex = $pageResult['firstItemIndex'];
+          // $maxItemsCollect = $pageResult['maxItemsCollect'];
+          $params['firstItemIndex'] = $pageResult['firstItemIndex'];
+          $params['maxItemsCollect'] = $pageResult['maxItemsCollect'];
+          echo "paginationHaveSameAddress. go From CurrentPage: firstItemIndex={$params['firstItemIndex']}, maxItemsCollect={$params['maxItemsCollect']}\n";
+          $resNextPage = $this->doNextPage($params);
+          if (is_null($resNextPage)) {
+            $this->currPage = '';
+            //break;
+            return false;
+          }
         } else {
           $resNextPage = $this->doNextPage($params);
           if (is_null($resNextPage)) {
@@ -907,7 +921,7 @@ private function collectFromPage($params, &$result, $valueNum=NULL) {
     //   alert('class=' + arguments[0].getAttribute('class'));
     //   alert('innerText=' + arguments[0].innerText);
     //   alert('display=' + arguments[0].style.display);", array($links[$count - 1]));
-    sleep(2);
+    //sleep(2);
   } // Spider::scrollToNextPage
   //-----------------------------------------------------
 
@@ -926,18 +940,24 @@ private function collectFromPage($params, &$result, $valueNum=NULL) {
   } // Spider::getExistingElement
   //-----------------------------------------------------
 
-  private function getExistingElements($link, $cssSelector) {
+  private function getExistingElements($link, $cssSelector, $comment) {
     $i = 10; // в общей сложности ждём 5 секунд с периодом по 500 милисекунд
     //echo date('H:i:s')." - start finding elements '$cssSelector'\n";
     while ($i-- > 0) {
       $elements = $link->findElements(WebDriverBy::cssSelector($cssSelector));
-      if (count($elements) == 0)
+      $c = count($elements);
+      //echo date("H:i:s")." - (getExistingElements - $comment) count of elements=$c\n";
+      if ($c == 0) {
+        echo "waiting\n";
         usleep(500000);
-      else
-        break;
+      }
+      else {
+        echo "found\n";
+        return $elements;
+      }
     }
-    //echo date('H:i:s')." - end finding elements '$cssSelector', count={count($elements)}\n";
-    return count($elements) == 0 ? false : $elements;
+    echo date('H:i:s')." - end finding elements '$cssSelector', count=".count($elements)."\n";
+    return false;
   } // Spider::getExistingElement
   //-----------------------------------------------------
 
@@ -1134,6 +1154,9 @@ private function collectFromPage($params, &$result, $valueNum=NULL) {
         case 'moveToElement':
           $link->moveToElement();
           break;
+        case "scrollTo":
+          $this->scrollToElement($link);
+          break;
         default:
           echo "no method for event '$event'";
       }
@@ -1153,7 +1176,7 @@ private function collectFromPage($params, &$result, $valueNum=NULL) {
       //echo "before check for duplicate value=".$value['fieldName']."\n";
       // check for duplicate fieldname
       $exists = false;
-      //echo "valueNum in getValue=$valueNum\n";
+      echo "valueNum in getValue=$valueNum\n";
       if (!array_key_exists('values', $result) && !array_key_exists($valueNum, $result['values']))
         return false;
       foreach ($result['values'][$valueNum] as $res)
@@ -1164,7 +1187,7 @@ private function collectFromPage($params, &$result, $valueNum=NULL) {
 
       try {
         // get value
-        //echo "get by atrr=".$value['attr']."\n";
+        echo "get by atrr=".$value['attr']."\n";
         $val = $link->getAttribute($value['attr']);
 
         $result['values'][$valueNum][] = array(
@@ -1172,7 +1195,7 @@ private function collectFromPage($params, &$result, $valueNum=NULL) {
           'value' => $val
         );
 
-        //echo "current field: ".$value['fieldName']."\ncurrent value: $val\n";
+        echo "current field: ".$value['fieldName']."\ncurrent value: $val\n";
         //print_r($result['values'][$valueNum]);
       } catch (NoSuchElementException $e) {
         echo "NoSuchElementException: ".$e->getMessage();
