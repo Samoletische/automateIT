@@ -13,13 +13,10 @@
   "paginationByScroll": true,
   "allPagesInOneSpider": true,
   "storage": {"method": "", "param": ""},
-  "startPagePreCollect": {
+  "preCollect": {
     "waitBetweenEvents": true,
     "waitWhenEnterText": true,
-    "cssSelector": "",
-    "filter": [],
-    "events": [],
-    "values": []
+    "elements": []
   },
   "parentElement": {
     "waitBetweenEvents": false,

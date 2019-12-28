@@ -1,0 +1,3 @@
+#!/bin/bash
+./cts
+php73 Clients/starter.php $1

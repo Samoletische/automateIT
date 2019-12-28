@@ -1,11 +1,16 @@
 #!/bin/bash
-cp conf_s.php /Volumes/www/automateIT/conf_s.php
-cp conf_c.php /Volumes/www/automateIT/conf_c.php
-cp server_inc.php /Volumes/www/automateIT/server_inc.php
-cp client_inc.php /Volumes/www/automateIT/client_inc.php
-cp start.php /Volumes/www/automateIT/start.php
-cp monitor.php /Volumes/www/automateIT/monitor.php
-cp storage.php /Volumes/www/automateIT/storage.php
-cp spider.php /Volumes/www/automateIT/spider.php
+cp conf/conf_s.json /Volumes/www/automateIT/conf/conf_s.json
+cp conf/conf_c.json /Volumes/www/automateIT/conf/conf_c.json
 cp conf/storage.json /Volumes/www/automateIT/conf/storage.json
 cp conf/monitor.json /Volumes/www/automateIT/conf/monitor.json
+
+cp Server/server_inc.php /Volumes/www/automateIT/server_inc.php
+cp Server/start.php /Volumes/www/automateIT/start.php
+cp Server/storage.php /Volumes/www/automateIT/storage.php
+cp Server/monitor.php /Volumes/www/automateIT/monitor.php
+
+cp Clients/spy.php /Volumes/www/automateIT/spy.php
+cp Clients/Spider.php /Volumes/www/automateIT/Spider.php
+cp Clients/Collector.php /Volumes/www/automateIT/Collector.php
+cp Clients/DynamicCollector.php /Volumes/www/automateIT/DynamicCollector.php
+cp Clients/StaticCollector.php /Volumes/www/automateIT/StaticCollector.php

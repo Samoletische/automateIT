@@ -1,0 +1,126 @@
+{
+  "pageName": "avitoBooks",                                     // название страницы параметров
+  "proxyServer": "45.113.66.34:8080",                           // адрес прокси
+  "startPage": "https://www.avito.ru/omsk/noutbuki?s_trg=3&sgtd=17&q=%D0%BF%D0%B8%D0%BE%D0%BD%D0%B5%D1%80%D1%81%D0%BA%D0%B8%D0%B9+%D0%B3%D0%B0%D0%BB%D1%81%D1%82%D1%83%D0%BA",
+  "maxPagesCollect": 0,                                         // со скольких страниц собирать (0-со всех, но 100 максимум)
+  "firstItemIndex": 0,                                          // индекс первого элемента на странице для сбора
+  "maxItemsCollect": 1,                                         // количество элементов для сбора, начиная с индекса первого элемента
+  "needInteractive": true,                                      // нужны ли интерактивные действия на странице. true - используем Selenium; false - используем PHPQuery with CURL
+  "alsoOnCurrentPage": false,                                   // по-умолчанию = false для сайтов с прокруткой или ajax. Устанавливается в true автоматически ТОЛЬКО после перехода до текущей страницы.
+  "collectAllData": false,                                      // индикатор перезаписи информации в БД. Если true - все записи будут перезаписаны. Если false - будут добавлены в БД только новые записи.
+  "insertOnly": false,                                          // по-умолчанию = false. Устанавливается в true ТОЛЬКО после проверки данных в БД при наличии новых данных. При этом новые данные (индексных полей) прописываются в фильтры.
+  "paginationHaveSameAddress": true,                            // адрес у страницы может вообще не меняться (всё на ajax'е, как я люблю). В таком случае (true) управляем взятие следующей страницы через параметры firstItemIndex и maxItemsCollect
+  "paginationByScroll": true,                                   // показ (подгрузка) следующих элементов осуществляется скролингом вниз
+  "allPagesInOneSpider": true,                                  // true - все страницы собираются одним Сборщиком; false - каждая страница собирается отдельным Сборщиком
+  "storage": {
+    "method": "DB",
+    "param": "insta_bil_edward?ven=vendor_title,prod=prod_title"
+  },
+                                                                // как сохранять данные - метод: JSON, DB; параметр: имя файла (JSON) или имя таблицы (DB)
+                                                                // для DB после имени таблицы идёт "?", за ним "имя поля" в этой таблице, за ним "=", за ним значение "имени поля" из таблицы, с которой нужно соединить значения
+                                                                // используется для дочерних страниц. Для главной страницы имя таблицы оканчивается "?"
+  "preCollect": {                                               // действия над страницей перед началом сбора основных данных
+    "waitBetweenEvents": true,
+    "waitWhenEnterText": true,
+    "elements": [
+      {
+        "cssSelector": "a.v-tabs__item",
+        "filter": [
+          {
+            "attr": "textContent",
+            "value": ["21.1 км "],
+            "xor": false
+          }
+        ],
+        "events": ["click"],
+        "values": []
+      }
+    ]
+  },
+  "parentElement": {
+    "waitBetweenEvents": "true",                                // нужно ли делать паузы между действиями
+    "waitWhenEnterText": "true",                                // человекоподобный ввод текста
+    "cssSelector": "div.item_table",
+    "filter": [
+      {
+        "attr": "data-ftid",                                    // наименование аттрибута для фильтрации значений
+        "value": [
+          "sales__bulls-item_is_hybrid"
+        ],                                                      // значений может быть несколько. должно совпасть хотя бы одно (т. е. по ИЛИ)
+        "xor": false                                            // тип сравнения: а) false значит "равно"; б) true значит "НЕ равно"
+      }
+    ],                                                          // дополнительные фильтры. Если у текущего элемента указанные в фильтре атррибуты имеются и имеют указанные значения, тогда собираем данные с этого элемента.
+    "events": ["moveToElement", "click"],                       // действия, которые необходимо выполнить над элементом перед сбором данных
+    "values": [
+      {
+        "fieldName": "id",
+        "index": true,
+        "attr": "data-item-id"
+      }
+    ],                                                          // собранные данные распределяем по полям таблицы хранилища. Возможно использование "newUID"
+    "childPages": [
+      {
+        "pageName": "avitoBooksImages",                         // ссылка на структуру данных со второстепенной страницы
+        "pageParent": "id"                                      // какое поле из этой таблицы брать в качестве идентификатора родителя второстепенной
+      }
+    ]
+  },
+  "childElements": {
+    "waitBetweenEvents": "true",
+    "waitWhenEnterText": "false",
+    "elements": [
+      {
+        "cssSelector": "a.item-description-title-link",
+        "fromParent": false,                                    // определяет где нужно искать этот селектор: от текущего родительского (true) или глобально на всей странице (false)
+        "filter": [],
+        "events": [],
+        "values": [
+          {
+            "fieldName": "title",
+            "index": false,
+            "attr": "title"
+          }
+        ]
+      },
+      {
+        "cssSelector": "span.price",
+        "filter": [],
+        "events": [],
+        "values": [
+          {
+            "fieldName": "price",
+            "index": false,
+            "attr": "content"
+          }
+        ]
+      },
+      {
+        "cssSelector": "img.item-extended-phone",
+        "filter": [
+          {"attr": "data-ftid", "value": "sales__bulls-item_is_hybrid"}
+        ],
+        "events": ["click"],
+        "values": [
+          {
+            "fieldName": "phoneImg",
+            "index": false,
+            "attr": "src"
+          }
+        ]
+      }
+    ]
+  },
+  "pagination": {
+    "cssSelector": "div.pagination",                               // элемент блока пагинатора. Для страниц со скролингом это элемент, пролистав до которого, страница подгрузит следующие элементы
+    "nextPage": "a.js-pagination-next",                            // необходимо подобрать селектор так, чтобы этот элемент был однозначно кнопкой перехода на след страницу
+    "filter": [],
+    "events": [],
+    "valueAttr": "href"
+  },
+  "process": [
+    {"fieldName": "phone", "command": "save", "param": "img/"}     // способ обработки полей: save-сохранить в папку (имя файла будет: 'pageName/fieldName' + id)
+  ],
+  "childPages": [
+    {}                                                             // структура повторяет структуру основной страницы
+  ]
+}

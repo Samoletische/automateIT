@@ -1,0 +1,18 @@
+{
+  "server": "http://192.168.0.20/automateIT",
+  "spiders": [
+    {
+      "addr": "192.168.0.20",
+      "port": 1234,
+      "url": "http://192.168.0.20/automateIT/spy.php",
+      "serverSelenium": "http://192.168.0.10:4444/wd/hub"
+    },
+    {
+      "addr": "192.168.0.20",
+      "port": 1235,
+      "url": "http://192.168.0.20/automateIT/spy.php",
+      "serverSelenium": "http://192.168.0.10:4444/wd/hub"
+    }
+  ],
+  "webJsonEthalon": "../conf/web.json"
+}
