@@ -9,7 +9,7 @@
     },
     {
       "addr": "192.168.0.20",
-      "port": 1235,
+      "port": 1236,
       "url": "http://192.168.0.20/automateIT/spy.php",
       "serverSelenium": "http://192.168.0.10:4444/wd/hub"
     }

@@ -54,7 +54,7 @@ class Web {
       if ($status != 'ready')
         continue;
 
-      System::insertLog("spider {$spider['port']} is ready, setting params...");
+      System::insertLog("spider {$spider['port']} is ready, starting collect...");
       $params = \array_shift($this->params);
       $result = $this->sendCommandToSpider($spider, 'collect', array($params));
       if (!$result) {
@@ -62,8 +62,8 @@ class Web {
         System::insertLog("can't set params to Spider");
         continue;
       }
+      System::insertLog("collect is started on spider: {$spider['port']}");
       break;
-
     }
   }
   //-----------------------------------------------------
@@ -90,7 +90,7 @@ class Web {
 
   private function sendCommandToSpider($spider, $command, $additionParams=NULL, $viaHTTP=false) {
     $result = NULL;
-    $params = array('command' => $command, 'method' => $command, 'params' => '', 'port' => $spider['port']);
+    $params = array('command' => $command, 'params' => '');
 
     if (!is_null($additionParams))
       $params['params'] = $additionParams;
@@ -105,19 +105,24 @@ class Web {
   //-----------------------------------------------------
 
   private function sendRequest($spider, $params) {
-    $socket = socket_create(AF_INET, SOCK_STREAM, 0);
-    if (\socket_connect($socket, $spider['addr'], $spider['port'])) {
-      $message = \json_encode($params);
-      System::insertLog($message);
-      \socket_write($socket, $message);
+    if (is_null($spider['socket'])) {
+      $spider['socket'] = socket_create(AF_INET, SOCK_STREAM, 0);
+      if (!\socket_connect($spider['socket'], $spider['addr'], $spider['port']))
+        $spider['socket'] = NULL;
+    }
+    $message = \json_encode($params);
+    //System::insertLog($message);
+    //if (\socket_connect($spider['socket'], $spider['addr'], $spider['port'])) {
+      \socket_write($spider['socket'], $message);
       System::insertLog("message sent");
-      $response = \socket_read($socket, 1024);
+      $response = \socket_read($spider['socket'], 1024);
+      System::insertLog($response);
       if (($response !== FALSE) && ($response != '')) {
         $answer = \json_decode($response, true);
         if (\json_last_error() == JSON_ERROR_NONE)
           return $answer;
       }
-    }
+    //}
 
     return NULL;
   }

@@ -3,25 +3,42 @@
 namespace Clients;
 
 require_once('Spider.php');
-require_once(__DIR__.'/lib/Workerman/Autoloader.php');
 
-use Workerman\Worker;
+$content = file_get_contents('php://input');
+$in = json_decode($content, true);
 
-ini_set('error_reporting', E_ALL);
-ini_set('display_errors', 1);
-ini_set('display_startup_errors', 1);
-
-define('TIMEOUT', 80);
+if ((isset($in)) && (array_key_exists('command', $in)))
+  switch ($in['command']) {
+    case 'kill':
+      echo \json_encode(killSpy($in));
+      break;
+    case 'areYouReady':
+      echo \json_encode(areYouReady($in));
+      break;
+    case 'getStatus':
+      echo \json_encode(getStatus($in));
+      break;
+    case 'setStatus':
+      echo \json_encode(setStatus($in));
+      break;
+    case 'setCurrPage':
+      echo \json_encode(setCurrPage($in));
+      break;
+    case 'getNextPage':
+      echo \json_encode(getNextPage($in));
+      break;
+    case 'collect':
+      echo \json_encode(collect($in));
+      break;
+    default:
+      echo \json_encode(array('result' => 'bad command'));
+  }
+else
+  echo \json_encode(array('result' => 'bad command'));
 //-----------------------------------------------------
 
-if (isset($argv)) { // запуск готового Сборщика из консоли
-  echo date('h:i:s')." - start spider\n";
-  // можно положить pid в отдельный файл
-  //echo getmypid()."\n";
-  if (count($argv) < 3) {
-    echo date('h:i:s')." - count of argv < 4 - exit\n";
-    exit();
-  }
+function createSpider() {
+  global $spider;
 
   $spider = new Spider($argv[3]);
   // переданы некорректные данные и поэтому закрываем Сборщика
@@ -29,16 +46,21 @@ if (isset($argv)) { // запуск готового Сборщика из ко�
     echo date('h:i:s')." - can't start Spider - exit\n";
     exit();
   }
+} // createSpider
+//-----------------------------------------------------
+
+function startWorker() {
+  global $spider;
 
   echo "starting worker at tcp://$argv[2]:$argv[3]\n";
   $tcp_worker = new Worker("tcp://$argv[2]:$argv[3]");
   $tcp_worker->count = 2;
+
   $tcp_worker->onConnect = function($connection) {
     echo "connection opened\n";
   };
-  //-----------------------------------------------------
-  $tcp_worker->onMessage = function($connection, $data) {
 
+  $tcp_worker->onMessage = function($connection, $data) {
     global $spider;
 
     $status = $spider->getStatus();
@@ -56,10 +78,8 @@ if (isset($argv)) { // запуск готового Сборщика из ко�
           exit();
           Worker::stopAll();
         case 'collect':
-          if (!method_exists($spider, $method))
-            break;
-          if (count($commands['params']) > 1)
-            $result['result'] = $spider->$method($commands['params'][0]);
+          $spider->saveParamsToFile($commands['params'][0]);
+          $spider->startCollectSpy();
           break;
         default:
           if (!method_exists($spider, $method))
@@ -69,50 +89,14 @@ if (isset($argv)) { // запуск готового Сборщика из ко�
       }
     }
     $connection->send(json_encode($result));
-
   };
-  //-----------------------------------------------------
+
   $tcp_worker->onClose = function($connection) {
     echo "connection closed\n";
   };
-  //-----------------------------------------------------
+
   Worker::runAll();
-
-  //echo date('h:i:s').' - exit';
-}
-else { // команды управления Сборщиком через HTTP
-  $content = file_get_contents('php://input');
-  $in = json_decode($content, true);
-
-  if ((isset($in)) && (array_key_exists('command', $in)))
-    switch ($in['command']) {
-      case 'kill':
-        echo \json_encode(killSpy($in));
-        break;
-      case 'areYouReady':
-        echo \json_encode(areYouReady($in));
-        break;
-      case 'getStatus':
-        echo \json_encode(getStatus($in));
-        break;
-      case 'setStatus':
-        echo \json_encode(setStatus($in));
-        break;
-      case 'setCurrPage':
-        echo \json_encode(setCurrPage($in));
-        break;
-      case 'getNextPage':
-        echo \json_encode(getNextPage($in));
-        break;
-      case 'collect':
-        echo \json_encode(collect($in));
-        break;
-      default:
-        echo \json_encode(array('result' => 'bad command'));
-    }
-  else
-    echo \json_encode(array('result' => 'bad command'));
-}
+} // startWorker
 //-----------------------------------------------------
 
 function killSpy($in) {
@@ -134,13 +118,60 @@ function areYouReady($in) {
   $result = array('result' => false, 'message' => '');
 
   if (array_key_exists('addr', $in) && array_key_exists('port', $in) && array_key_exists('serverSelenium', $in)) {
-    $result['message'] = 'all keys exists';
     // проверяем готовность Сборщика
     $result['result'] = Spider::ReadyToUse($in['serverSelenium']);
 
-    if ($result['result']) {
-      // запускаем Сборщик
-      system("php -f spy.php start ".$in['addr'].' '.$in['port']." > ".$in['port'].".log.txt 2>&1 &");
+    if (!$result['result']) {
+      $result['message'] = 'spider not ready';
+      return $result;
+    }
+    if (\file_exists($in['port'])) {
+      // remove port dir
+      if (\is_dir($in['port'])) {
+        $files = \scandir($in['port']);
+        foreach ($files as $file) {
+          if (($file == '.') || ($file == '..'))
+            continue;
+          if (\is_dir($in['port'].'/'.$file)) {
+            $result['result'] = false;
+            $result['message'] = 'port contains a dir';
+            break;
+          }
+          $result['result'] = \unlink($in['port'].'/'.$file);
+          if (!$result['result']) {
+            $result['message'] = 'can not unlink file in port dir';
+            return $result;
+          }
+        }
+        $result['result'] = \rmdir($in['port']);
+      } else // or file
+        $result['result'] = \unlink($in['port']);
+    }
+    if (!$result['result'])
+      return $result;
+
+    // create dir and fill it
+    $result['result'] = mkdir($in['port']);
+    if (!$result['result']) {
+      $result['message'] = 'can not make port dir';
+      return $result;
+    }
+    $result['result'] = copy('spyd.php', $in['port'].'/spyd.php');
+    if (!$result['result']) {
+      $result['message'] = 'can not copy spyd.php';
+      return $result;
+    }
+    $result['result'] = copy('spyw.php', $in['port'].'/spyw.php');
+    if (!$result['result']) {
+      $result['message'] = 'can not copy spyw.php';
+      return $result;
+    }
+
+    // start spy daemon
+    $spyStr = "php {$in['port']}/spyd.php start ".$in['addr'].' '.$in['port']." > ".$in['port'].".log.txt 2>&1 &";
+    if (system($spyStr) === FALSE) {
+      $result['message'] = $spyStr;
+      $result['result'] = false;
     }
   }
 

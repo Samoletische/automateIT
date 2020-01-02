@@ -60,7 +60,7 @@ abstract class System {
 
     $spiders = array();
     foreach($conf->spiders as $spy) {
-      System::insertLog($spy['port']);
+      //System::insertLog($spy['port']);
       $spyReady = true;
       $socket = \socket_create(AF_INET, SOCK_STREAM, 0);
       if ($socket === FALSE)
@@ -81,7 +81,8 @@ abstract class System {
         if (!\is_null($result) && \array_key_exists('result', $result) && ($result['result'])) {
           System::insertLog(\is_numeric($spy['addr']).' - '.\is_numeric($spy['port']));
           System::insertLog("spy started, connecting... tcp://{$spy['addr']}:{$spy['port']}");
-          //sleep(5);
+          sleep(1);
+          $socket = \socket_create(AF_INET, SOCK_STREAM, 0);
           $spyReady = \socket_connect($socket, $spy['addr'], $spy['port']);
         }
       }
@@ -91,7 +92,8 @@ abstract class System {
           'addr' => $spy['addr'],
           'port' => $spy['port'],
           'url' => $spy['url'],
-          'serverSelenium' => $spy['serverSelenium']
+          'serverSelenium' => $spy['serverSelenium'],
+          'socket' => NULL
         );
       }
       //sleep(1);

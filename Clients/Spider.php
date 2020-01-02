@@ -7,6 +7,14 @@ require_once("StaticCollector.php");
 require_once("DynamicCollector.php");
 
 class Spider {
+  const READY = 'ready';
+  const ERROR = 'error';
+  const COLLECTING = 'collecting';
+  const COLLECTED = 'collected';
+  const PROCESSING = 'processing';
+  const PROCESSED = 'processed';
+  const STORAGING = 'storaging';
+  const STORAGED = 'storaged';
 
   private $status; // 'ready', 'collecting', 'processing', 'storaging'
   private $token;
@@ -52,6 +60,44 @@ class Spider {
 
   static function ReadyToUse($seleniumServer) {
     // проверка на доступность Selenium'а
+    return true;
+  }
+  //-----------------------------------------------------
+
+  static function saveArrayToFile($array, $file) {
+    if (\file_exists($file))
+      if (!\unlink($file))
+        return false;
+
+    $json = \json_encode($array);
+    if ($json === FALSE)
+      return false;
+
+    if (\file_put_contents($file, $json) === FALSE)
+      return false;
+
+    return true;
+  }
+  //-----------------------------------------------------
+
+  static function loadArrayFromFile($file) {
+    if (!\file_exists($file))
+      return NULL;
+
+    $json = \file_get_contents($file);
+    if ($json === FALSE)
+      return NULL;
+
+    $array = \json_decode($json, true);
+    if (\json_last_error() !== JSON_ERROR_NONE)
+      return NULL;
+
+    return $array;
+  }
+  //-----------------------------------------------------
+
+  public function setParams($params) {
+    $this->params = $params;
     return true;
   }
   //-----------------------------------------------------
@@ -245,6 +291,7 @@ class Spider {
 
   public function collect($pageNum, $collectAfterCheck=false, &$params=NULL) {
 
+    return true;
     $params = is_null($params) ? $this->params : $params;
 
     $this->status = 'collecting';

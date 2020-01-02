@@ -10,7 +10,9 @@ require_once('System.php');
 require_once('lib/Workerman/Autoloader.php');
 
 Use Workerman\Worker;
-Use Workerman\lib\Timer;
+Use Workerman\Lib\Timer;
+
+define('TIMER', 3);
 
 $conf = Conf::getConf();
 if (is_null($conf))
@@ -33,7 +35,7 @@ if (\is_null($starterIP)) {
 $worker = new Worker('tcp://'.$starterIP.':1200');
 $worker->count = 2;
 
-$timer = Timer::add(3, function() {
+$timer = Timer::add(TIMER, function() {
   taskMngr();
 });
 
