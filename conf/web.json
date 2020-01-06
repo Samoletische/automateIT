@@ -2,7 +2,6 @@
   "pageName": "",
   "proxyServer": "",
   "startPage": "",
-  "maxPagesCollect": "",
   "firstItemIndex": 0,
   "maxItemsCollect": 0,
   "needInteractive": true,
@@ -13,25 +12,18 @@
   "paginationByScroll": true,
   "allPagesInOneSpider": true,
   "storage": {"method": "", "param": ""},
-  "preCollect": {
-    "waitBetweenEvents": true,
-    "waitWhenEnterText": true,
-    "elements": []
-  },
+  "waitBetweenEvents": true,
+  "waitWhenEnterText": true,
+  "preCollectOnEachPage": false,
+  "preCollectElements": [],
   "parentElement": {
-    "waitBetweenEvents": false,
-    "waitWhenEnterText": false,
     "cssSelector": "",
     "filter": [],
     "events": [],
     "values": [],
     "childPages": []
   },
-  "childElements": {
-    "waitBetweenEvents": false,
-    "waitWhenEnterText": false,
-    "elements": []
-  },
+  "childElements": [],
   "pagination": {
     "cssSelector": "",
     "nextPage": "",

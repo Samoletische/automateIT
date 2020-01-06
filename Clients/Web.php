@@ -8,13 +8,11 @@ class Web {
 
   private $spiders;
   private $params;
-  private $starterIP;
   //-----------------------------------------------------
 
-  function __construct($spiders, $starterIP) {
+  function __construct($spiders) {
     $this->params = array();
     $this->spiders = $spiders;
-    $this->$starterIP = $starterIP;
   }
   //-----------------------------------------------------
 
@@ -42,8 +40,12 @@ class Web {
   //-----------------------------------------------------
 
   public function monitor() {
+    System::insertLog('monitor');
+
     if (count($this->params) == 0)
       return;
+
+    $conf = Conf::getConf();
 
     System::insertLog("new task exists ({$this->params[0]['pageName']}), searching free Spider...");
     foreach($this->spiders as $spider) {
@@ -56,7 +58,7 @@ class Web {
 
       System::insertLog("spider {$spider['port']} is ready, starting collect...");
       $params = \array_shift($this->params);
-      $result = $this->sendCommandToSpider($spider, 'collect', array($params));
+      $result = $this->sendCommandToSpider($spider, 'collect', array($params, $conf->server, $spider['serverSelenium']));
       if (!$result) {
         array_unshift($this->params, $params);
         System::insertLog("can't set params to Spider");

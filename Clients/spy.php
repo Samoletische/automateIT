@@ -104,8 +104,21 @@ function killSpy($in) {
   $result = array('result' => true, 'message' => '');
 
   if (array_key_exists('port', $in)) {
-    $result['message'] = system("kill {$in['port']}");
-    $result['result'] = ($result['message'] === FALSE) ? false : true;
+    $filename = $in['port'].'/'.$in['port'].'_pid.txt';
+    $result['message'] .= PHP_EOL.$filename;
+    if (\file_exists($filename)) {
+      $pid = \file_get_contents($filename);
+      $result['message'] .= ' - '.$pid;
+      system("kill $pid");
+    }
+    $filename = $in['port'].'/'.($in['port']+1).'_pid.txt';
+    $result['message'] .= PHP_EOL.$filename;
+    if (\file_exists($filename)) {
+      $pid = \file_get_contents($filename);
+      $result['message'] .= ' - '.$pid;
+      system("kill $pid");
+    }
+    $result['result'] = true;
   }
 
   return $result;
@@ -117,7 +130,10 @@ function areYouReady($in) {
 
   $result = array('result' => false, 'message' => '');
 
-  if (array_key_exists('addr', $in) && array_key_exists('port', $in) && array_key_exists('serverSelenium', $in)) {
+  if (array_key_exists('addr', $in)
+      && array_key_exists('port', $in)
+      && array_key_exists('starterAddr', $in)
+      && array_key_exists('starterPort', $in)) {
     // проверяем готовность Сборщика
     $result['result'] = Spider::ReadyToUse($in['serverSelenium']);
 
@@ -168,7 +184,7 @@ function areYouReady($in) {
     }
 
     // start spy daemon
-    $spyStr = "php {$in['port']}/spyd.php start ".$in['addr'].' '.$in['port']." > ".$in['port'].".log.txt 2>&1 &";
+    $spyStr = "php {$in['port']}/spyd.php start ".$in['addr'].' '.$in['port'].' '.$in['starterAddr'].' '.$in['starterPort']." > ".$in['port'].".log.txt 2>&1 &";
     if (system($spyStr) === FALSE) {
       $result['message'] = $spyStr;
       $result['result'] = false;

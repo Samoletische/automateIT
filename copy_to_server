@@ -13,6 +13,8 @@ cp Clients/spy.php /Volumes/www/automateIT/spy.php
 cp Clients/spyd.php /Volumes/www/automateIT/spyd.php
 cp Clients/spyw.php /Volumes/www/automateIT/spyw.php
 cp Clients/Spider.php /Volumes/www/automateIT/Spider.php
+cp Clients/Web.php /Volumes/www/automateIT/Clients/Web.php
+cp Clients/System.php /Volumes/www/automateIT/Clients/System.php
 cp Clients/Collector.php /Volumes/www/automateIT/Collector.php
 cp Clients/DynamicCollector.php /Volumes/www/automateIT/DynamicCollector.php
 cp Clients/StaticCollector.php /Volumes/www/automateIT/StaticCollector.php

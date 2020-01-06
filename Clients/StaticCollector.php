@@ -5,16 +5,14 @@ namespace Clients;
 require_once("lib/phpQuery/phpQuery.php");
 
 class StaticCollector extends Collector {
-  function __construct($params, $result, $pageNum) {
-    parent::__construct($params, $result, $pageNum);
+  // function __construct($params, $result, $pageNum) {
+  //   parent::__construct($params, $result, $pageNum);
+  function __construct($params) {
+    parent::__construct($params);
   }
   //-----------------------------------------------------
 
   public function doPreCollect() {
-  }
-  //-----------------------------------------------------
-
-  public function gotoCurrentPage() {
   }
   //-----------------------------------------------------
 
@@ -28,32 +26,27 @@ class StaticCollector extends Collector {
   }
   //-----------------------------------------------------
 
-  public function getChildElements($elements) {
+  public function getChildElements($parent) {
 
   }
   //-----------------------------------------------------
 
-  public function filterIt($elements) {
+  public function filterIt($element) {
 
   }
   //-----------------------------------------------------
 
-  public function getValues($elements) {
+  public function getValues($element, $newValue=false) {
 
   }
   //-----------------------------------------------------
 
-  public function doEvents($elements) {
+  public function doEvents($element) {
 
   }
   //-----------------------------------------------------
 
-  public function collectFromChildPages($elements) {
-
-  }
-  //-----------------------------------------------------
-
-  public function getResult() {
+  public function collectFromChildPages($parent) {
 
   }
   //-----------------------------------------------------

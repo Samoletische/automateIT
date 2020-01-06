@@ -21,7 +21,7 @@ if (PHP_SAPI !== 'cli')
 if (isset($argv)) {
   insertLog("start spider");
   if (count($argv) < 3) {
-    insertLog("count of argv < 4 - exit");
+    insertLog("count of argv < 3 - exit");
     exit();
   }
 
@@ -36,7 +36,7 @@ if (isset($argv)) {
   $parentAddr = $argv[2];
   $parentPort = $argv[3]-1;
   $currPort = $argv[3];
-  $spider = new Spider($parentPort);
+  $spider = new Spider();
   insertLog("parent: $parentAddr:$parentPort");
 
   insertLog("starting worker at tcp://$parentAddr:$currPort");
@@ -67,23 +67,42 @@ if (isset($argv)) {
           echo "receive close-command, exiting...\n";
           exit();
           Worker::stopAll();
-        case 'collect':
-          $params = Spider::loadArrayFromFile("web_$parentPort.json");
-          if (is_null($params))
-            break;
-          insertLog('params loaded');
-          if (!$spider->setParams($params))
+        case 'setParams':
+          if (!$spider->setParams($commands['params'][0], $commands['params'][1], $commands['params'][2]))
             break;
           insertLog('params seted');
-          $spider->setStatus(Spider::COLLECTING);
           $connection->send('ok');
           $sendAnswer = false;
-          if (!$spider->collect(0)) {
+          break;
+        case 'collect':
+          $connection->send('ok');
+          $sendAnswer = false;
+          if (!$spider->collect()) {
             insertLog("collecting error");
             sendToParent('setStatus', Spider::ERROR);
             break;
           }
           sendToParent('setStatus', Spider::COLLECTED);
+          break;
+        case 'process':
+          $connection->send('ok');
+          $sendAnswer = false;
+          if (!$spider->process()) {
+            insertLog("processing error");
+            sendToParent('setStatus', Spider::ERROR);
+            break;
+          }
+          sendToParent('setStatus', Spider::PROCESSED);
+          break;
+        case 'storage':
+          $connection->send('ok');
+          $sendAnswer = false;
+          if (!$spider->storage()) {
+            insertLog("storaging error");
+            sendToParent('setStatus', Spider::ERROR);
+            break;
+          }
+          sendToParent('setStatus', $spider->isComplete() ? Spider::READY : Spider::STORAGED);
           break;
         default:
           if (!method_exists($spider, $command))
@@ -130,6 +149,11 @@ function sendToParent($command, $params) {
     insertLog("can't send to socket");
     return false;
   }
+  //++ FDO
+  insertLog("sending command - $command");
+  if ($command == 'setStatus')
+    insertLog("send status - $params");
+  //--
   $response = socket_read($socket, 1024);
   insertLog($response);
   if (($response === FALSE) || ($response == '')) {

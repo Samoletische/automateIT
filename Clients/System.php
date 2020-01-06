@@ -31,7 +31,7 @@ abstract class System {
         )
       ));
       $response = file_get_contents($url, false, $context);
-      //System::insertLog($response);
+      // System::insertLog($response);
       $result = json_decode($response, true);
       //print_r($result);
       if (json_last_error() === JSON_ERROR_NONE)
@@ -54,7 +54,7 @@ abstract class System {
   *   Web - объект, если ошибок не было.
   *   Если были ошибки (проблемы с файлом настроек), то возвращается NULL.
   */
-  static function createWeb($starterIP, &$error='') {
+  static function createWeb($starterIP, $starterPort, &$error='') {
 
     $conf = Conf::getConf();
 
@@ -75,9 +75,11 @@ abstract class System {
             'command' => 'areYouReady',
             'addr' => $spy['addr'],
             'port' => $spy['port'],
-            'serverSelenium' => $spy['serverSelenium']
+            'starterAddr' => $starterIP,
+            'starterPort' => $starterPort
           )
         );
+        //print_r($result);
         if (!\is_null($result) && \array_key_exists('result', $result) && ($result['result'])) {
           System::insertLog(\is_numeric($spy['addr']).' - '.\is_numeric($spy['port']));
           System::insertLog("spy started, connecting... tcp://{$spy['addr']}:{$spy['port']}");
@@ -103,7 +105,7 @@ abstract class System {
     if (count($spiders) == 0)
       return NULL;
 
-    return new Web($spiders, $starterIP);
+    return new Web($spiders, $starterIP, $starterPort);
 
   }
   //-----------------------------------------------------
@@ -145,6 +147,38 @@ abstract class System {
     $file = $filename[0];
     $line = $back[0]['line'];
     echo date("H:i:s")." - $file ($line): $message\n";
+  }
+  //-----------------------------------------------------
+
+  static function saveArrayToFile($array, $file) {
+    if (\file_exists($file))
+      if (!\unlink($file))
+        return false;
+
+    $json = \json_encode($array);
+    if ($json === FALSE)
+      return false;
+
+    if (\file_put_contents($file, $json) === FALSE)
+      return false;
+
+    return true;
+  }
+  //-----------------------------------------------------
+
+  static function loadArrayFromFile($file) {
+    if (!\file_exists($file))
+      return NULL;
+
+    $json = \file_get_contents($file);
+    if ($json === FALSE)
+      return NULL;
+
+    $array = \json_decode($json, true);
+    if (\json_last_error() !== JSON_ERROR_NONE)
+      return NULL;
+
+    return $array;
   }
   //-----------------------------------------------------
 

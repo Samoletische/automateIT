@@ -2,6 +2,7 @@
 
 namespace Clients;
 
+require_once("Clients/System.php");
 require_once("Collector.php");
 require_once("StaticCollector.php");
 require_once("DynamicCollector.php");
@@ -18,18 +19,23 @@ class Spider {
 
   private $status; // 'ready', 'collecting', 'processing', 'storaging'
   private $token;
+  private $collector;
+  private $serverDB;
 
   private $params; // enter data
   private $result; // outer data
   //-----------------------------------------------------
 
   //function __construct($token, $params) {
-  function __construct($token) {
+  //function __construct($token) {
+  function __construct() {
 
-    echo "creating Spider with token=$token\n";
+    // echo "creating Spider with token=$token\n";
 
-    $this->status = 'ready';
-    $this->token  = $token;
+    // $this->status = 'ready';
+    $this->token = $token;
+    $this->collector = NULL;
+    $this->params = NULL;
 
     // if ((!array_key_exists('pageName', $params))
     //   || (!array_key_exists('storage', $params))
@@ -41,8 +47,9 @@ class Spider {
     //   return NULL;
     //
     // $this->params = $params;
-    $this->driver = NULL;
-    $this->wait   = NULL;
+    // $this->driver = NULL;
+    // $this->wait   = NULL;
+
 
     // $this->eraseResult($this->result, $this->params['pageName']);
   }
@@ -64,40 +71,12 @@ class Spider {
   }
   //-----------------------------------------------------
 
-  static function saveArrayToFile($array, $file) {
-    if (\file_exists($file))
-      if (!\unlink($file))
-        return false;
-
-    $json = \json_encode($array);
-    if ($json === FALSE)
-      return false;
-
-    if (\file_put_contents($file, $json) === FALSE)
-      return false;
-
-    return true;
-  }
-  //-----------------------------------------------------
-
-  static function loadArrayFromFile($file) {
-    if (!\file_exists($file))
-      return NULL;
-
-    $json = \file_get_contents($file);
-    if ($json === FALSE)
-      return NULL;
-
-    $array = \json_decode($json, true);
-    if (\json_last_error() !== JSON_ERROR_NONE)
-      return NULL;
-
-    return $array;
-  }
-  //-----------------------------------------------------
-
-  public function setParams($params) {
+  public function setParams($params, $serverDB=NULL, $serverSelenium=NULL) {
     $this->params = $params;
+    $this->serverDB = $serverDB;
+    if (!\is_null($this->collector))
+      unset($this->collector);
+    $this->collector = $params['needInteractive'] ? new DynamicCollector($params, $serverSelenium) : new StaticCollector($params);
     return true;
   }
   //-----------------------------------------------------
@@ -199,6 +178,11 @@ class Spider {
   }
   //-----------------------------------------------------
 
+  public function isComplete() {
+    return $this->collector->isComplete();
+  }
+  //-----------------------------------------------------
+
   private function goToCurrentPage($params=NULL, &$pageResult) {
 
     $params = is_null($params) ? $this->params : $params;
@@ -289,7 +273,7 @@ class Spider {
   } // scrollToPageTop
   //-----------------------------------------------------
 
-  public function collect($pageNum, $collectAfterCheck=false, &$params=NULL) {
+  public function collect_old($pageNum, $collectAfterCheck=false, &$params=NULL) {
 
     return true;
     $params = is_null($params) ? $this->params : $params;
@@ -369,6 +353,102 @@ class Spider {
   }
   //-----------------------------------------------------
 
+  /**
+  * Выполняет сбор данных с текущей установленной страницы
+  * @param
+  * @return bool false - произошли ошибки; true - успешный сбор
+  */
+  public function collect() {
+
+    System::insertLog("starting collect");
+
+    if (\is_null($this->params)) {
+      System::insertLog("no params sets, can't collect");
+      return false;
+    }
+
+    //$this->status = 'collecting';
+    // collect
+    try {
+      // echo "insertOnly before collect=".$params['insertOnly']."\n";
+      // if ($collectAfterCheck)
+      //   $this->eraseResult($this->result, $params['pageName']);
+      // if (!$this->collectFromPage($params, $this->result, $pageNum))
+      if (!$this->collectFromPage()) {
+        System::insertLog("can't collect from current page");
+        return false;
+      }
+    } catch (Exception $ex) {
+      System::insertLog("catch exception: ".$ex->getMessage());
+      return false;
+    } catch (Error $er) {
+      System::insertLog("catch error: ".$er->getMessage());
+      return false;
+    }
+    // if ($this->status == 'error')
+    //   return NULL;
+
+    return true;
+
+    // process
+    $this->process();
+    if ($this->status == 'error')
+      return;
+
+    // storage
+    $storageResult = $this->storage($params);
+
+    echo "collectAfterCheck=$collectAfterCheck\n";
+    if ($collectAfterCheck)
+      echo "storage after save:\n";
+    else
+      echo "storage after check:\n";
+    print_r($storageResult);
+
+    if ($collectAfterCheck)
+      return;
+    elseif (!$params['collectAllData']) { // вернулись параметры только тех данных, которых нет в БД
+      $filters = json_decode($storageResult, true);
+      if (json_last_error() !== JSON_ERROR_NONE) {
+        echo "bad data returns from storage\n";
+        return;
+      }
+      if (count($filters) != 0) {
+        // обновляем filter в $params и отправляем на новый виток
+        $params['parentElement']['filter'] = array();
+        foreach($params['parentElement']['values'] as $value)
+          foreach($filters as $filter)
+            if ($filter['attr'] == $value['fieldName'])
+              $params['parentElement']['filter'][] = array('attr' => $value['attr'], 'value' => $filter['value'], 'xor' => false);
+        // foreach ($params['childElements']['elements'] as $element) {
+        //   $element['filter'] = array();
+        //   foreach($element['values'] as $value)
+        //     foreach($filters as $filter)
+        //       if ($filter['attr'] == $value['fieldName'])
+        //         $element['filter'][] = array('attr' => $value['attr'], 'value' => $filter['value'], 'xor' => false);
+        // }
+        echo "insertOnly=".$params['insertOnly'].", change on true\n";
+        $params['insertOnly'] = true;
+        $this->collect($pageNum, true, $params);
+      }
+    }
+    if ($this->status == 'error')
+      return NULL;
+
+    // finish
+    if ($params['allPagesInOneSpider']) {
+      $this->eraseResult($this->result, $this->params['pageName']);
+      echo "collect from next page...\n";
+      echo "(collect) alsoOnCurrentPage=".$params['alsoOnCurrentPage']."\n";
+      $this->collect(++$pageNum, false, $params); // collect from next page
+      echo "complete\n";
+      $this->complete();
+    }
+
+    return true;
+  }
+  //-----------------------------------------------------
+
   private function eraseResult(&$result, $pageName) {
     $result = array();
     $result['pageName']   = $pageName;
@@ -377,427 +457,44 @@ class Spider {
   }
   //-----------------------------------------------------
 
-  private function collectFromPageStatic(&$params, &$result, $valueNum=NULL) {
+  private function collectFromPage() {
 
-    $pageText = new Curl();
-    $page = phpQuery::newDocument($pageText->get_page($this->currPage));
-    $elements = $page->find($params['parentElement']['cssSelector']);
-
-    $count = count($elements->elements);
-    $countS = count($elements);
-    $firstItemIndex = $params['firstItemIndex'];
-    $maxItemsCollect = $params['maxItemsCollect'];
-    $finishIndex = $firstItemIndex + $maxItemsCollect;
-
-    echo "count=$count, countS=$countS, currItemIndex=$firstItemIndex, finishIndex=$finishIndex\n";
-
-    for ($index = $firstItemIndex; $index < $finishIndex; $index++) {
-      echo date('H:i:s')." - index=$index, firstItemIndex=$firstItemIndex, finishIndex=$finishIndex\n";
-      if ($index >= $count)
-         break;
-
-      $result['values'][] = array();
-
-      $element = $elements[$index];
-      $errorMessage = '';
-      // filters
-      if (!$this->filterIt($link, $parentElement['filter']))
-        continue;
-      // 1. a) do events
-      $this->doEvents($link, $parentElement['events'], $params);
-      $childElements = $params['childElements'];
-      // 1. b) get data
-      echo date('H:i:s')." - values of parentElement:\n";
-      //print_r($parentElement['values']);
-      $this->getValues($link, $parentElement['values'], $valueNum, $result);
-      // 1. c) get data from child page
-
-      // 2. collect data from child elements
-      foreach ($childElements['elements'] as $element) {
-        if ($element['fromParent'])
-          //$childLink = $this->getExistingElement($link, $element['cssSelector']);
-          $childLinks = $this->getExistingElements($link, $element['cssSelector'], "ChildFromParent");
-        else
-          $childLinks = $this->getExistingElements($this->driver, $element['cssSelector'], "ChildFromTop");
-        //echo date('H:i:s').' - count of child element '.$element['cssSelector'].' = '.count($childLinks)."\n";
-        //if (!$childLink) {
-        if (!$childLinks) {
-          $errorMessage .= $errorMessage == '' ? '' : '; ';
-          $errorMessage .= "find child elements error: ";
-          continue;
-        }
-        foreach ($childLinks as $childLink) {
-          // filters
-          //echo "filter child\n";
-          if (!$this->filterIt($childLink, $element['filter']))
-            continue;
-          //echo "event child\n";
-          // 2. a) do events
-          $this->doEvents($childLink, $element['events'], $params);
-          //echo "get value child. valueNum=$valueNum\n";
-          // 2. b) get data
-          $this->getValues($childLink, $element['values'], $valueNum, $result);
-          //echo "getted value\n";
-        }
-        // 2. c) get data from child page
-      }
-
-      // 3. collect from child pages
-      echo date('H:i:s').' - count of child pages='.count($parentElement['childPages'])."\n";
-      foreach ($parentElement['childPages'] as $childPageIndex => $childPage) {
-
-        echo "start collect from child page\n";
-        // get href of child page
-        $childPagelink = $this->getExistingElement($link, $childPage['cssSelector']);
-        if (!$childPagelink) {
-          $errorMessage .= $errorMessage == '' ? '' : '; ';
-          $errorMessage .= "find child pages error: ";
-          continue;
-        }
-        if ($childPage['attr'] == 'text')
-          $href = $childPagelink->getText();
-        else
-          $href = $childPagelink->getAttribute($childPage['attr']);
-
-        echo "child href: $href\n";
-
-        // find params for child page
-        $childParams = NULL;
-        foreach ($params['childPages'] as $childPageParams) {
-          echo $childPageParams['pageName']." - ".$childPage['pageName']."\n";
-          if ($childPageParams['pageName'] == $childPage['pageName']) {
-            $childParams = $childPageParams;
-            break;
-          }
-        }
-
-        if ($childParams !== NULL) {
-          // create new tab this new URL by href and switch to it
-          $oldTab = $this->driver->getWindowHandle();
-          echo "oldTab handle: ".$oldTab."\n";
-          $this->driver->ExecuteScript("window.open('".$href."','_blank');");
-          $tabs = $this->driver->getWindowHandles();
-          $newTab = $tabs[count($tabs) - 1]; // если возвращаются в порядке открытия
-          echo "newTab handle: ".$newTab."\n";
-          $this->driver->switchTo()->window($newTab);
-
-          // prepare results and collect
-          echo $params['storage']['method']."-".$childParams['storage']['method']."\n";
-          if (($params['storage']['method'] == "DB") && ($childParams['storage']['method'] == "DB")) {
-            $storageParent = explode('?', $params['storage']['param']);
-            $storageChild = explode('?', $childParams['storage']['param']);
-
-            echo $storageParent[0]."-".$storageChild[0]."\n";
-            if ($storageParent[0] == $storageChild[0])
-              $childResult = &$result;
-            else {
-              $childResult = &$result["childPages"][$childPageIndex];
-              $this->eraseResult($childResult, $childParams['pageName']);
-            }
-
-            echo "collect from child page\n";
-            $this->collectFromPageDynamic($childParams, $childResult, $valueNum);
-          }
-
-          $this->driver->close();
-          $this->driver->switchTo()->window($oldTab);
-        }
-      }
-
-      //$result['values'][$valueNum++][] = array( 'name' => 'error', 'value' => $errorMessage );
-      $valueNum++;
-      --$maxItemsCollect;
-
-      if ($maxItemsCollect <= 0) {
-        $this->currPage = '';
-        //break;
-        return true;
-      }
-
-    }
-
-  }
-  //-----------------------------------------------------
-
-  private function collectFromPageDynamic(&$params, &$result, $valueNum=NULL) {
-
-    $firstItemIndex = $params['firstItemIndex'];
-    $maxItemsCollect = $params['maxItemsCollect'];
-    $count_last = 0;
-
-    echo "pageName=".$params['pageName']."\n";
-    //print_r($params);
-
-    try {
-      if ($valueNum === NULL)
-        $valueNum = count($result['values']);
-
-      echo "(collectFromPage) alsoOnCurrentPage=".$params['alsoOnCurrentPage']."\n";
-      if (!$params['alsoOnCurrentPage']) {
-        if (!$this->doPreCollect($params, $result))
-          throw new UnrecognizedExceptionException();
-
-        if ($params['paginationHaveSameAddress']) {
-          $pageResult = array('firstItemIndex' => $params['firstItemIndex'], 'maxItemsCollect' => $params['maxItemsCollect']);
-          $this->goToCurrentPage($params, $pageResult);
-          $firstItemIndex = $pageResult['currFirstItemIndex'];
-          $maxItemsCollect = $pageResult['currMaxItemsCollect'];
-        }
-      }
-
-      //echo 'after pre-collect, on current page - firstItemIndex = '.$pageResult['currFirstItemIndex'].', maxItemsCollect = '.$pageResult['currMaxItemsCollect']."\n";
-
-      // 1. get parent element
-      $parentElement = $params['parentElement'];
-      echo date('H:i:s')." - parent css: ".$parentElement['cssSelector']."\n";
-  //    while (true) {
-        //$links = $this->driver->findElements(WebDriverBy::cssSelector($parentElement['cssSelector']));
-        //echo 'current URL - '.$this->driver->getCurrentUrl()."\n";
-        $links = $this->getExistingElements($this->driver, $parentElement['cssSelector'], "parentElement");
-        if (!$links) {
-          echo "find parent elements error\n";
-          //break;
-          return false;
-        }
-
-        $count = count($links);
-        echo "count of Links: ".$count."\n";
-
-        if ($count == 0) {
-          //$result['values'][$valueNum][] = array( 'name' => 'error', 'value' => "parent elements by '".$parentElement['cssSelector']."' not found" );
-          return true;
-        }
-
-        // $finishIndex = $currItemIndex + $maxItemsCollect;
-        $finishIndex = $firstItemIndex + $maxItemsCollect;
-        echo "scrollPage=".$params['paginationByScroll'].", currItemIndex=$firstItemIndex, finishIndex=$finishIndex\n";
-
-        //for ($index = $currItemIndex; $index < $finishIndex; $index++) {
-        for ($index = $firstItemIndex; $index < $finishIndex; $index++) {
-        //foreach ($links as $index => $link) {
-          echo date('H:i:s')." - index=$index, firstItemIndex=$firstItemIndex, finishIndex=$finishIndex\n";
-          if ($index >= $count)
-             break;
-
-          $result['values'][] = array();
-
-          $link = $links[$index];
-          $errorMessage = '';
-          // filters
-          if (!$this->filterIt($link, $parentElement['filter']))
-            continue;
-          // 1. a) do events
-          $this->doEvents($link, $parentElement['events'], $params);
-          $childElements = $params['childElements'];
-          // 1. b) get data
-          echo date('H:i:s')." - values of parentElement:\n";
-          //print_r($parentElement['values']);
-          $this->getValues($link, $parentElement['values'], $valueNum, $result);
-          // 1. c) get data from child page
-
-          // 2. collect data from child elements
-          foreach ($childElements['elements'] as $element) {
-            if ($element['fromParent'])
-              //$childLink = $this->getExistingElement($link, $element['cssSelector']);
-              $childLinks = $this->getExistingElements($link, $element['cssSelector'], "ChildFromParent");
-            else
-              $childLinks = $this->getExistingElements($this->driver, $element['cssSelector'], "ChildFromTop");
-            //echo date('H:i:s').' - count of child element '.$element['cssSelector'].' = '.count($childLinks)."\n";
-            //if (!$childLink) {
-            if (!$childLinks) {
-              $errorMessage .= $errorMessage == '' ? '' : '; ';
-              $errorMessage .= "find child elements error: ";
-              continue;
-            }
-            foreach ($childLinks as $childLink) {
-              // filters
-              //echo "filter child\n";
-              if (!$this->filterIt($childLink, $element['filter']))
-                continue;
-              //echo "event child\n";
-              // 2. a) do events
-              $this->doEvents($childLink, $element['events'], $params);
-              //echo "get value child. valueNum=$valueNum\n";
-              // 2. b) get data
-              $this->getValues($childLink, $element['values'], $valueNum, $result);
-              //echo "getted value\n";
-            }
-            // 2. c) get data from child page
-          }
-
-          // 3. collect from child pages
-          echo date('H:i:s').' - count of child pages='.count($parentElement['childPages'])."\n";
-          foreach ($parentElement['childPages'] as $childPageIndex => $childPage) {
-
-            echo "start collect from child page\n";
-            // get href of child page
-            $childPagelink = $this->getExistingElement($link, $childPage['cssSelector']);
-            if (!$childPagelink) {
-              $errorMessage .= $errorMessage == '' ? '' : '; ';
-              $errorMessage .= "find child pages error: ";
-              continue;
-            }
-            if ($childPage['attr'] == 'text')
-              $href = $childPagelink->getText();
-            else
-              $href = $childPagelink->getAttribute($childPage['attr']);
-
-            echo "child href: $href\n";
-
-            // find params for child page
-            $childParams = NULL;
-            foreach ($params['childPages'] as $childPageParams) {
-              echo $childPageParams['pageName']." - ".$childPage['pageName']."\n";
-              if ($childPageParams['pageName'] == $childPage['pageName']) {
-                $childParams = $childPageParams;
-                break;
-              }
-            }
-
-            if ($childParams !== NULL) {
-              // create new tab this new URL by href and switch to it
-              $oldTab = $this->driver->getWindowHandle();
-              echo "oldTab handle: ".$oldTab."\n";
-              $this->driver->ExecuteScript("window.open('".$href."','_blank');");
-              $tabs = $this->driver->getWindowHandles();
-              $newTab = $tabs[count($tabs) - 1]; // если возвращаются в порядке открытия
-              echo "newTab handle: ".$newTab."\n";
-              $this->driver->switchTo()->window($newTab);
-
-              // prepare results and collect
-              echo $params['storage']['method']."-".$childParams['storage']['method']."\n";
-              if (($params['storage']['method'] == "DB") && ($childParams['storage']['method'] == "DB")) {
-                $storageParent = explode('?', $params['storage']['param']);
-                $storageChild = explode('?', $childParams['storage']['param']);
-
-                echo $storageParent[0]."-".$storageChild[0]."\n";
-                if ($storageParent[0] == $storageChild[0])
-                  $childResult = &$result;
-                else {
-                  $childResult = &$result["childPages"][$childPageIndex];
-                  $this->eraseResult($childResult, $childParams['pageName']);
-                }
-
-                echo "collect from child page\n";
-                $this->collectFromPageDynamic($childParams, $childResult, $valueNum);
-              }
-
-              $this->driver->close();
-              $this->driver->switchTo()->window($oldTab);
-            }
-          }
-
-          //$result['values'][$valueNum++][] = array( 'name' => 'error', 'value' => $errorMessage );
-          $valueNum++;
-          --$maxItemsCollect;
-
-          if ($maxItemsCollect <= 0) {
-            $this->currPage = '';
-            //break;
-            return true;
-          }
-
-        }
-
-        // go to next page
-        echo "for ended, index=$index, maxItemsCollect=$maxItemsCollect\n";
-        if (!$params['allPagesInOneSpider']) {
-          $this->currPage = '';
-          //break;
-          return false;
-        }
-
-        // у нас три варианта пагинаторов:
-        // - новый контент появляется когда доскролим до конца
-        // - новый контент подгружается ajax'ом, адрес траницы при этом не меняется.
-        // Сюда же относятся страницы, где контент появляется по кнопке "Ещё", например.
-        // - классический пагинатор: берём адрес следующей страницы из кнопки "Следующая".
-        $params['alsoOnCurrentPage'] = true;
-        if ($params['paginationByScroll'])
-          $this->scrollToElement($link);
-        elseif ($params['paginationHaveSameAddress']) {
-          echo "paginationHaveSameAddress. goToCurrentPage: index=$index, maxItemsCollect=$maxItemsCollect\n";
-          $pageResult = array('firstItemIndex' => $index, 'maxItemsCollect' => $maxItemsCollect);
-          if (!$this->goToCurrentPage($params, $pageResult)) {
-            $this->currPage = '';
-            //break;
-            return false;
-          }
-          // $firstItemIndex = $pageResult['firstItemIndex'];
-          // $maxItemsCollect = $pageResult['maxItemsCollect'];
-          $params['firstItemIndex'] = $pageResult['firstItemIndex'];
-          $params['maxItemsCollect'] = $pageResult['maxItemsCollect'];
-          echo "paginationHaveSameAddress. go From CurrentPage: firstItemIndex={$params['firstItemIndex']}, maxItemsCollect={$params['maxItemsCollect']}\n";
-          $resNextPage = $this->doNextPage($params);
-          if (is_null($resNextPage)) {
-            $this->currPage = '';
-            //break;
-            return false;
-          }
-        } else {
-          $resNextPage = $this->doNextPage($params);
-          if (is_null($resNextPage)) {
-            $this->currPage = '';
-            //break;
-            return false;
-          }
-          $this->setCurrPage($resNextPage, ++$this->currPageNum, $params['allPagesInOneSpider'] ? 0 : $index, $maxItemsCollect);
-          $this->currPage = $this->driver->get($this->currPage);
-          $params['alsoOnCurrentPage'] = false;
-        }
-//        break;
-//      }
-    } catch (UnrecognizedExceptionException $uee) {
-      echo "UnrecognizedExceptionException: ".$uee->getMessage()."\n";
-      $this->currPage = '';
-      return false;
-    } catch (StaleElementReferenceException $sere) {
-      echo "StaleElementReferenceException: ".$uee->getMessage()."\n";
-      $this->currPage = '';
+    if (\is_null($this->collector)) {
+      System::insertLog("no collector init");
       return false;
     }
-    return true;
-    // echo "results of ".$params['pageName'].":\n";
-    // print_r($result);
-  }
-  //-----------------------------------------------------
 
-  private function collectFromPage(&$params, &$result, $pageNum) {
-
-    $collector = $params['needInteractive'] ? new DynamicCollector($params, $result, $pageNum) : new StaticCollector($params, $result, $pageNum);
-
-    if (!$collector->doPreCollect())
+    if (!$this->collector->doPreCollect()) {
+      System::insertLog("can't do preCollect");
       return false;
+    }
 
-    if (!$collector->gotoCurrentPage())
+    $elements = $this->collector->getParentElements();
+    if (\is_null($elements)) {
+      System::insertLog("can't get parent elements");
       return false;
-
-    $elements = $collector->getParentElements();
-    if (count($elements) == 0)
-      return false;
+    }
 
     foreach ($elements as $element) {
 
-      if (!$collector->filterIt($element))
-        continue;
-      $collector->doEvents($element);
-      $collector->getValues($element);
+      $this->collector->getValues($element, Collector::NEW_VALUE);
 
-      $childElements = $collector->getChildElements($element);
-      foreach ($childElement as $childElement) {
-        if (!$collector->filterIt($childElement))
-          continue;
-        $collector->doEvents($childElement);
-        $collector->getValues($childElement);
+      $childElements = $this->collector->getChildElements($element);
+
+      if (\is_null($childElements)) {
+        $text = $element['link']->getAttribute("textContent");
+        System::insertLog("can't get child elements from $text");
+        $childElements = array();
       }
 
-      $collector->collectFromChildPages($element);
+      foreach ($childElements as $childElement)
+        $this->collector->getValues($childElement);
+
+      $this->collector->collectFromChildPages($element);
 
     }
 
-    $collector->gotoNextPage();
-
-    $collector->getResult($params, $result);
+    $this->collector->gotoNextPage();
 
     return true;
   }
@@ -847,16 +544,21 @@ class Spider {
   }
   //-----------------------------------------------------
 
-  private function process() {
-    echo "process\n";
-    $this->status = 'processing';
-    $this->processResult($this->params, $this->result);
+  public function process() {
+    System::insertLog("starting process");
+    System::insertLog("is collector null - ".\is_null($this->collector));
+
+    $result = $this->collector->getResult();
+    $this->processResult($this->params, $result);
+    $this->collector->setResult($result);
+
+    return true;
   }
   //-----------------------------------------------------
 
   private function processResult($params, &$result) {
-    foreach ($params['process'] as $process) {
-      foreach ($result['values'] as &$record) {
+    foreach ($result['values'] as &$record) {
+      foreach ($params['process'] as $process) {
         foreach ($record as &$field) {
           if ($field['name'] != $process['fieldName'])
             continue;
@@ -908,16 +610,20 @@ class Spider {
   }
   //-----------------------------------------------------
 
-  private function storage($params=NULL) {
-    echo "storaging\n";
-    $this->status = 'storaging';
-    return $this->storageResult($this->result, $params);
+  public function storage($params=NULL) {
+    System::insertLog("starting storage");
+
+    $result = $this->collector->getResult();
+    if (!$this->storageResult($this->params, $result))
+      return false;
+
+    $this->collector->clearResult();
+
+    return true;
   }
   //-----------------------------------------------------
 
-  private function storageResult($result, $params=NULL) {
-
-    $params = is_null($params) ? $this->params : $params;
+  private function storageResult($params, $result) {
 
     switch ($params['storage']['method']) {
       case "JSON":
@@ -935,12 +641,12 @@ class Spider {
           echo "bad outer JSON";
         break;
       case "DB":
-        $storageURL = 'http://192.168.0.20/automateIT/storage.php?';
+        $storageURL = "{$this->serverDB}/storage.php?";
 
         // prepare storage.json
         $result['paramsValues'] = array();
         $result['paramsValues'] = array_merge($result['paramsValues'], $params['parentElement']['values']);
-        foreach($params['childElements']['elements'] as $element)
+        foreach($params['childElements'] as $element)
           $result['paramsValues'] = array_merge($result['paramsValues'], $element['values']);
         foreach($params['childPages'] as $element) {
           // сделать проверку на совпадение имён таблиц БД
@@ -951,8 +657,8 @@ class Spider {
         $result['collectAllData'] = $params['collectAllData'];
         $result['insertOnly'] = $params['insertOnly'];
 
-        echo "send to storage:\n";
-        echo "count of result = ".count($result['values'])."\n";
+        System::insertLog("send to storage:");
+        System::insertLog("count of result = ".count($result['values']));
         print_r($result);
         $echo = file_get_contents($storageURL, false, stream_context_create(array(
           'http' => array(
@@ -961,7 +667,7 @@ class Spider {
             'content' => json_encode($result)
           )
         )));
-        echo "storage return:\n";
+        System::insertLog("storage return:");
 
         // обработка ошибок сохранения/проверки
 
