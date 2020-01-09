@@ -31,7 +31,7 @@ abstract class System {
         )
       ));
       $response = file_get_contents($url, false, $context);
-      // System::insertLog($response);
+      //System::insertLog($response);
       $result = json_decode($response, true);
       //print_r($result);
       if (json_last_error() === JSON_ERROR_NONE)
@@ -75,6 +75,7 @@ abstract class System {
             'command' => 'areYouReady',
             'addr' => $spy['addr'],
             'port' => $spy['port'],
+            'serverSelenium' => $spy['serverSelenium'],
             'starterAddr' => $starterIP,
             'starterPort' => $starterPort
           )
@@ -83,7 +84,7 @@ abstract class System {
         if (!\is_null($result) && \array_key_exists('result', $result) && ($result['result'])) {
           System::insertLog(\is_numeric($spy['addr']).' - '.\is_numeric($spy['port']));
           System::insertLog("spy started, connecting... tcp://{$spy['addr']}:{$spy['port']}");
-          sleep(1);
+          \sleep(1);
           $socket = \socket_create(AF_INET, SOCK_STREAM, 0);
           $spyReady = \socket_connect($socket, $spy['addr'], $spy['port']);
         }
@@ -140,13 +141,27 @@ abstract class System {
   /**
   *
   */
-  static function insertLog($message) {
+  static function insertLog($message, $fromSystem=false) {
+    $index = $fromSystem ? 1 : 0;
     $back = \debug_backtrace();
-    $path = explode('/', $back[0]['file']);
+    $path = explode('/', $back[$index]['file']);
     $filename = explode('.', $path[count($path) - 1]);
     $file = $filename[0];
-    $line = $back[0]['line'];
-    echo date("H:i:s")." - $file ($line): $message\n";
+    $line = $back[$index]['line'];
+    echo date("H:i:s")." - $file ($line): $message".PHP_EOL;
+  }
+  //-----------------------------------------------------
+
+  /**
+  *
+  */
+  static function showCalledFrom() {
+    $back = \debug_backtrace();
+    $path = explode('/', $back[1]['file']);
+    $filename = explode('.', $path[count($path) - 1]);
+    $file = $filename[0];
+    $line = $back[1]['line'];
+    System::insertLog("called from $file ($line)", true);
   }
   //-----------------------------------------------------
 

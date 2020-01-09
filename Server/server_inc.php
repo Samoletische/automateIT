@@ -88,6 +88,13 @@ abstract class System {
     if (is_null($db))
       return;
 
+    $back = \debug_backtrace();
+    $path = explode('/', $back[0]['file']);
+    $filename = explode('.', $path[count($path) - 1]);
+    $file = $filename[0];
+    $line = $back[0]['line'];
+    $message = date("H:i:s")." - $file ($line): $message";
+
     $db->query("INSERT INTO logs SET message='$message', addr='{$_SERVER['REMOTE_ADDR']}'");
 
   } // System::insertLog
@@ -139,10 +146,12 @@ abstract class Storage {
           $fields .= $fields == '' ? '' : ",";
           $date = date('Y-m-d H:i:s', time() + TIMEZONE*3600);
           $fields .= "dateNow='".$date."'";
+          System::insertLog("query string1");
         	$queryStr = 'UPDATE '.$result['pageName']." SET $fields WHERE $where";
         	//echo $queryStr."\n";
+          System::insertLog("query string2");
+          System::insertLog("server: overwrite query: $queryStr");
         	$query = $db->query($queryStr);
-          System::insertLog("server: overwrite query: $queryStr\n");
         	if (!$query) {
             echo "Ошибка БД при обновлении записи: ".$db->error."\n";
             return false;
@@ -171,6 +180,7 @@ abstract class Storage {
       }
     }
 
+    System::insertLog("returning true");
     return true;
 
   } // Storage::save

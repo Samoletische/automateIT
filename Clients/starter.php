@@ -21,7 +21,7 @@ if (is_null($conf))
 $web = NULL;
 $starterIP = NULL;
 $starterPort = 1200;
-$tasks = array('runsim21', 'dromLexus'); // пока задаём статично
+$tasks = array('dromLexus', 'runsim21'); // пока задаём статично
 
 foreach (dns_get_record(gethostname()) as $record)
   if (\array_key_exists('ip', $record)) {

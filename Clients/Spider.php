@@ -74,8 +74,8 @@ class Spider {
   public function setParams($params, $serverDB=NULL, $serverSelenium=NULL) {
     $this->params = $params;
     $this->serverDB = $serverDB;
-    if (!\is_null($this->collector))
-      unset($this->collector);
+    // if (!\is_null($this->collector))
+    //   unset($this->collector);
     $this->collector = $params['needInteractive'] ? new DynamicCollector($params, $serverSelenium) : new StaticCollector($params);
     return true;
   }
@@ -367,6 +367,11 @@ class Spider {
       return false;
     }
 
+    if (\is_null($this->collector)) {
+      System::insertLog("no collector init");
+      return false;
+    }
+
     //$this->status = 'collecting';
     // collect
     try {
@@ -374,7 +379,7 @@ class Spider {
       // if ($collectAfterCheck)
       //   $this->eraseResult($this->result, $params['pageName']);
       // if (!$this->collectFromPage($params, $this->result, $pageNum))
-      if (!$this->collectFromPage()) {
+      if (!$this->collector->collectFromPage()) {
         System::insertLog("can't collect from current page");
         return false;
       }
@@ -454,49 +459,6 @@ class Spider {
     $result['pageName']   = $pageName;
     $result['values']     = array();
     $result['childPages'] = array();
-  }
-  //-----------------------------------------------------
-
-  private function collectFromPage() {
-
-    if (\is_null($this->collector)) {
-      System::insertLog("no collector init");
-      return false;
-    }
-
-    if (!$this->collector->doPreCollect()) {
-      System::insertLog("can't do preCollect");
-      return false;
-    }
-
-    $elements = $this->collector->getParentElements();
-    if (\is_null($elements)) {
-      System::insertLog("can't get parent elements");
-      return false;
-    }
-
-    foreach ($elements as $element) {
-
-      $this->collector->getValues($element, Collector::NEW_VALUE);
-
-      $childElements = $this->collector->getChildElements($element);
-
-      if (\is_null($childElements)) {
-        $text = $element['link']->getAttribute("textContent");
-        System::insertLog("can't get child elements from $text");
-        $childElements = array();
-      }
-
-      foreach ($childElements as $childElement)
-        $this->collector->getValues($childElement);
-
-      $this->collector->collectFromChildPages($element);
-
-    }
-
-    $this->collector->gotoNextPage();
-
-    return true;
   }
   //-----------------------------------------------------
 
@@ -612,14 +574,15 @@ class Spider {
 
   public function storage($params=NULL) {
     System::insertLog("starting storage");
+    $resultStorage = true;
 
     $result = $this->collector->getResult();
     if (!$this->storageResult($this->params, $result))
-      return false;
+      $resultStorage = false;
 
     $this->collector->clearResult();
 
-    return true;
+    return $resultStorage;
   }
   //-----------------------------------------------------
 
@@ -667,7 +630,7 @@ class Spider {
             'content' => json_encode($result)
           )
         )));
-        System::insertLog("storage return:");
+        System::insertLog("storage return: $echo");
 
         // обработка ошибок сохранения/проверки
 

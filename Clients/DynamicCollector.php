@@ -41,10 +41,18 @@ class DynamicCollector extends Collector {
       if (!$this->initDriver())
         return false;
 
-    if ((!$this->params['preCollectOnEachPage']) && ($this->pageNum != Collector::FIRST_PAGE))
+    if ($this->collectFromChild) {
+      $params   = $this->childParams;
+      $pageNum  = $this->childPageNum;
+    } else {
+      $params   = $this->params;
+      $pageNum  = $this->pageNum;
+    }
+
+    if ((!$params['preCollectOnEachPage']) && ($pageNum != Collector::FIRST_PAGE))
       return true;
 
-    foreach ($this->params['preCollectElements'] as $element) {
+    foreach ($params['preCollectElements'] as $element) {
 
       if ($element['cssSelector'] != '') {
         $links = $this->getExistingElements($this->driver, $element['cssSelector']);
@@ -61,8 +69,7 @@ class DynamicCollector extends Collector {
           // do events
           $this->doEvents(array('link' => $link, 'element' => $element));
           // get data
-          if (!is_null($this->result))
-            $this->getValues(array('link' => $link, 'element' => $element));
+          $this->getValues(array('link' => $link, 'element' => $element));
         }
       }
 
@@ -76,12 +83,23 @@ class DynamicCollector extends Collector {
   public function gotoNextPage() {
 
     if ($this->isComplete()) {
-      if (!\is_null($this->driver))
+      if (!\is_null($this->driver) && !$this->collectFromChild)
         $this->clearDriver();
       return true;
     }
 
-    $pagination = $this->params['pagination'];
+    if ($this->collectFromChild) {
+      $params   = $this->childParams;
+      $pageNum  = &$this->childPageNum;
+    } else {
+      $params   = $this->params;
+      $pageNum  = &$this->pageNum;
+    }
+
+    $pagination = $params['pagination'];
+
+    if ($pagination['cssSelector'] == '')
+      return true;
 
     $links = $this->driver->findElements(WebDriverBy::cssSelector($pagination['cssSelector']));
     System::insertLog("do next page: count of pagination element=".count($links));
@@ -113,7 +131,7 @@ class DynamicCollector extends Collector {
       if ($url != '')
         $this->driver->get($url);
 
-      $this->pageNum++;
+      $pageNum++;
 
       \usleep(1000000);
 
@@ -131,9 +149,19 @@ class DynamicCollector extends Collector {
       if (!$this->initDriver())
         return NULL;
 
-    $result = array();
+    if ($this->collectFromChild) {
+      $params           = $this->childParams;
+      $firstItemIndex   = &$this->childFirstItemIndex;
+      $maxItemsCollect  = &$this->childMaxItemsCollect;
+    } else {
+      $params           = $this->params;
+      $firstItemIndex   = &$this->firstItemIndex;
+      $maxItemsCollect  = &$this->maxItemsCollect;
+    }
 
-    $parentElement = $this->params['parentElement'];
+    $resultArray = array();
+
+    $parentElement = $params['parentElement'];
     System::insertLog("parent css: {$parentElement['cssSelector']}");
     $links = $this->getExistingElements($this->driver, $parentElement['cssSelector']);
     if (\is_null($links)) {
@@ -147,12 +175,12 @@ class DynamicCollector extends Collector {
     if ($count == 0)
       return NULL;
 
-    if ($count <= $this->firstItemIndex) {
+    if ($count <= $firstItemIndex) {
       System::insertLog("collected items not in current page, go to next page...");
-      return $result;
+      return $resultArray;
     }
 
-    for ($index = $this->firstItemIndex; $index < $this->firstItemIndex + $this->maxItemsCollect; $index++) {
+    for ($index = $firstItemIndex; $index < $firstItemIndex + $maxItemsCollect; $index++) {
       if ($index == $count)
         break;
 
@@ -160,17 +188,17 @@ class DynamicCollector extends Collector {
       if (!$this->filterIt($el))
         continue;
       $this->doEvents($el);
-      $result[] = $el;
+      $resultArray[] = $el;
     }
 
-    System::insertLog("params before getting parent elements: firstItemIndex={$this->firstItemIndex}, maxItemsCollect={$this->maxItemsCollect}");
-    $this->maxItemsCollect -= count($result);
-    if ($this->maxItemsCollect > 0)
-      $this->firstItemIndex = 0;
+    System::insertLog("params before getting parent elements: firstItemIndex={$firstItemIndex}, maxItemsCollect={$maxItemsCollect}");
+    $maxItemsCollect -= count($resultArray);
+    if ($maxItemsCollect > 0)
+      $firstItemIndex = 0;
 
-    System::insertLog("params after getting parent elements: firstItemIndex={$this->firstItemIndex}, maxItemsCollect={$this->maxItemsCollect}");
+    System::insertLog("params after getting parent elements: firstItemIndex={$firstItemIndex}, maxItemsCollect={$maxItemsCollect}");
 
-    return $result;
+    return $resultArray;
   }
   //-----------------------------------------------------
 
@@ -180,9 +208,11 @@ class DynamicCollector extends Collector {
         || !\array_key_exists('element', $parent))
       return NULL;
 
-    $result = array();
+    $params = ($this->collectFromChild) ? $this->childParams : $this->params;
 
-    foreach ($this->params['childElements'] as $element) {
+    $resultArray = array();
+
+    foreach ($params['childElements'] as $element) {
       if ($element['fromParent'])
         $childLinks = $this->getExistingElements($parent['link'], $element['cssSelector']);
       else
@@ -198,17 +228,18 @@ class DynamicCollector extends Collector {
         if (!$this->filterIt($el))
           continue;
         $this->doEvents($el);
-        $result[] = $el;
+        $resultArray[] = $el;
       }
     }
-    System::insertLog("found ".count($result)." child elements");
+    System::insertLog("found ".count($resultArray)." child elements");
 
-    return $result;
+    return $resultArray;
   }
   //-----------------------------------------------------
 
   public function filterIt($element) {
-    $result = true;
+
+    $resultFilter = true;
 
     if (!\is_array($element)
         || !\array_key_exists('link', $element)
@@ -233,20 +264,31 @@ class DynamicCollector extends Collector {
       }
       //echo "valueExists = $valueExists\n";
       if (!$valueExists)
-        $result = false;
+        $resultFilter = false;
     }
-    return $result;
+
+    return $resultFilter;
+
   }
   //-----------------------------------------------------
 
   public function getValues($element, $newValue=false) {
+
     if (!\is_array($element)
         || !\array_key_exists('link', $element)
         || !\array_key_exists('element', $element))
       return;
 
+    if ($this->collectFromChild) {
+      $valueNum = &$this->childValueNum;
+      $result   = &$this->childResult;
+    } else {
+      $valueNum = &$this->valueNum;
+      $result   = &$this->result;
+    }
+
     if ($newValue)
-      $this->valueNum++;
+      $valueNum++;
 
     foreach ($element['element']['values'] as $value) {
 
@@ -254,29 +296,29 @@ class DynamicCollector extends Collector {
       // check for duplicate fieldname
       $exists = false;
       //System::insertLog("valueNum in getValue={$this->valueNum}");
-      if (!array_key_exists('values', $this->result))
+      if (!array_key_exists('values', $result))
         return false;
-      if (\count($this->result['values']) > $this->valueNum) {
-        foreach ($this->result['values'][$this->valueNum] as $res)
+      if (\count($result['values']) > $valueNum) {
+        foreach ($result['values'][$valueNum] as $res)
           if ($res['name'] == $value['fieldName'])
             $exists = true;
         if ($exists)
           continue;
       } else
-        $this->result['values'][] = array();
+        $result['values'][] = array();
 
       try {
         // get value
-        //System::insertLog("get by atrr=".$value['attr']);
+        System::insertLog("get by atrr=".$value['attr']);
         $val = $element['link']->getAttribute($value['attr']);
 
-        $this->result['values'][$this->valueNum][] = array(
+        $result['values'][$valueNum][] = array(
           'name' => $value['fieldName'],
           'value' => $val
         );
 
-        //System::insertLog("current field: ".$value['fieldName']."\ncurrent value: $val");
-        //print_r($result['values'][$valueNum]);
+        System::insertLog("current field: ".$value['fieldName']."\ncurrent value: $val");
+        print_r($result['values'][$valueNum]);
       } catch (NoSuchElementException $e) {
         System::insertLog("NoSuchElementException: ".$e->getMessage());
         continue;
@@ -332,13 +374,116 @@ class DynamicCollector extends Collector {
 
   public function collectFromChildPages($parent) {
 
+    if (\count($parent['element']['childPages']) == 0)
+      return;
+
+    if ($this->collectFromChild) {
+      $firstItemIndex   = &$this->childFirstItemIndex;
+      $maxItemsCollect  = &$this->childMaxItemsCollect;
+      $params           = $this->childParams;
+      $result           = &$this->childResult;
+      $pageNum          = &$this->childPageNum;
+      $valueNum         = &$this->childValueNum;
+    } else {
+      $firstItemIndex   = &$this->firstItemIndex;
+      $maxItemsCollect  = &$this->maxItemsCollect;
+      $params           = $this->params;
+      $result           = &$this->result;
+      $pageNum          = &$this->pageNum;
+      $valueNum         = &$this->valueNum;
+    }
+
+    // remember from wich level now collecting
+    $collectFromChild_old = $this->collectFromChild;
+    $firstItemIndex_old   = $firstItemIndex;
+    $maxItemsCollect_old  = $maxItemsCollect;
+    $params_old           = $params;
+    $pageNum_old          = $pageNum;
+    $valueNum_old         = $valueNum;
+
+    System::insertLog("count of child pages=".count($parent['element']['childPages']));
+    foreach ($parent['element']['childPages'] as $childPageIndex => $childPage) {
+
+      System::insertLog("start collect from child page");
+      // get href of child page
+      System::insertLog("selector of child page: '{$childPage['cssSelector']}'");
+      $childPagelink = ($childPage['cssSelector'] == '') ? $parent['link'] : $this->getExistingElements($parent['link'], $childPage['cssSelector']);
+      if (\is_null($childPagelink)) {
+        System::insertLog("can't find child page link");
+        continue;
+      }
+      $href = $childPagelink->getAttribute($childPage['attr']);
+      System::insertLog("child href: $href");
+
+      // find params for child page
+      $this->childParams = NULL;
+      foreach ($params['childPages'] as $childPageParams) {
+        System::insertLog($childPageParams['pageName']." - ".$childPage['pageName']);
+        if ($childPageParams['pageName'] == $childPage['pageName']) {
+          $this->childParams = $childPageParams;
+          break;
+        }
+      }
+
+      if (\is_null($this->childParams)) {
+        System::insertLog("can't find params of this childPage - {$childPage['pageName']}");
+        continue;
+      }
+
+      // create new tab this new URL by href and switch to it
+      $oldTab = $this->driver->getWindowHandle();
+      System::insertLog("oldTab handle: ".$oldTab);
+      $this->driver->ExecuteScript("window.open('".$href."','_blank');");
+      $tabs = $this->driver->getWindowHandles();
+      $newTab = $tabs[count($tabs) - 1]; // если возвращаются в порядке открытия
+      System::insertLog("newTab handle: ".$newTab);
+      $this->driver->switchTo()->window($newTab);
+
+      // prepare results and collect
+      System::insertLog($params['storage']['method']."-".$this->childParams['storage']['method']);
+
+      $storageParent = explode('?', $params['storage']['param']);
+      $storageChild = explode('?', $this->childParams['storage']['param']);
+      System::insertLog($storageParent[0]."-".$storageChild[0]);
+
+      if ($storageParent[0] == $storageChild[0]) {
+        $this->childValueNum = $valueNum - 1;
+        $this->childResult = &$result;
+      }
+      else {
+        $this->childResult = &$result["childPages"][$childPageIndex];
+        $this->clearResult(Collector::COLLECT_FROM_CHILD);
+      }
+
+      $this->childFirstItemIndex   = $this->childParams['firstItemIndex'];
+      $this->childMaxItemsCollect  = $this->childParams['maxItemsCollect'];
+
+      System::insertLog("collect from child page");
+      $this->collectFromPage(Collector::COLLECT_FROM_CHILD, $childPageIndex);
+
+      $this->driver->close();
+      $this->driver->switchTo()->window($oldTab);
+    }
+
+    // restore collect level
+    $this->collectFromChild = $collectFromChild_old;
+    $firstItemIndex         = $firstItemIndex_old;
+    $maxItemsCollect        = $maxItemsCollect_old;
+    $params                 = $params_old;
+    $pageNum                = $pageNum_old;
+    $valueNum               = $valueNum_old;
+
+    //++ FDO
+    print_r($this->result);
+    //--
   }
   //-----------------------------------------------------
 
   private function getExistingElements($link, $cssSelector) {
 
+    System::showCalledFrom();
     $i = 10; // в общей сложности ждём 5 секунд с периодом по 500 милисекунд
-    //echo date('H:i:s')." - start finding elements '$cssSelector'\n";
+    //System::insertLog("start finding elements '$cssSelector'");
     while ($i-- > 0) {
       $elements = $link->findElements(WebDriverBy::cssSelector($cssSelector));
       $c = count($elements);

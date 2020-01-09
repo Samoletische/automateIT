@@ -76,6 +76,7 @@ if (isset($argv)) {
       switch ($command) {
         case 'getStatus':
           $result['result'] = $status;
+          insertLog("current status '$status'");
           break;
         case 'collect':
           // save params to file
