@@ -65,8 +65,8 @@ class Spider {
   }
   //-----------------------------------------------------
 
-  static function ReadyToUse($seleniumServer) {
-    // проверка на доступность Selenium'а
+  static function ReadyToUse() {
+    // проверка на доступность выхода в Интернет
     return true;
   }
   //-----------------------------------------------------
@@ -74,10 +74,9 @@ class Spider {
   public function setParams($params, $serverDB=NULL, $serverSelenium=NULL) {
     $this->params = $params;
     $this->serverDB = $serverDB;
-    // if (!\is_null($this->collector))
-    //   unset($this->collector);
-    $this->collector = $params['needInteractive'] ? new DynamicCollector($params, $serverSelenium) : new StaticCollector($params);
-    return true;
+    $this->collector = Collector::createCollector($params, $serverSelenium);
+
+    return !\is_null($this->collector);
   }
   //-----------------------------------------------------
 
@@ -511,6 +510,7 @@ class Spider {
     System::insertLog("is collector null - ".\is_null($this->collector));
 
     $result = $this->collector->getResult();
+    print_r($result);
     $this->processResult($this->params, $result);
     $this->collector->setResult($result);
 

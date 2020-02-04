@@ -12,7 +12,37 @@ ini_set('error_reporting', E_ALL);
 ini_set('display_errors', 1);
 ini_set('display_startup_errors', 1);
 
-define('TIMER', 3);
+define('TIMER', 1);
+
+final class Status { // singletone for storage current status. global not give current value.
+  static $instance;
+  private $status;
+
+  static function get() {
+    if (empty(self::$instance))
+      self::$instance = new Status(Spider::READY);
+    return self::$instance->getStatus();
+  }
+
+  static function set($status) {
+    if (empty(self::$instance))
+      self::$instance = new Status($status);
+    else
+      self::$instance->setStatus($status);
+  }
+
+  private function __construct($status) {
+    $this->status = $status;
+  }
+
+  public function getStatus() {
+    return $this->status;
+  }
+
+  public function setStatus($status) {
+    $this->status = $status;
+  }
+}
 //-----------------------------------------------------
 
 if (PHP_SAPI !== 'cli')
@@ -41,7 +71,8 @@ if (isset($argv)) {
 
   system('echo '.getmypid().' > '.$argv[3].'/'.$argv[3].'_pid.txt');
 
-  $status = 'ready';
+  //$status = Spider::READY;
+  //$status = Status::get();
   $spiderSocket = NULL;
   $spiderAddr = $argv[2];
   $spiderPort = $argv[3]+1;
@@ -54,17 +85,18 @@ if (isset($argv)) {
   $tcp_worker = new Worker("tcp://$spiderAddr:$currPort");
   $tcp_worker->count = 2;
 
-  $timer = Timer::add(TIMER, function() {
-    monitor();
-  });
+  // $timer = Timer::add(TIMER, function() {
+  //   monitor();
+  // });
 
   $tcp_worker->onConnect = function($connection) {
     insertLog("connection opened");
   };
 
   $tcp_worker->onMessage = function($connection, $data) {
-    global $status, $spiderAddr, $currPort;
+    global $spiderAddr, $currPort;
 
+    $status = Status::get();
     $result = array('result' => NULL);
     $sendAnswer = true;
     $commands = json_decode($data, true);
@@ -75,35 +107,35 @@ if (isset($argv)) {
       insertLog("receive command '{$command}'");
       switch ($command) {
         case 'getStatus':
-          $result['result'] = $status;
-          insertLog("current status '$status'");
+          //$result['result'] = $status;
+          $result['result'] = Status::get();
+          //insertLog("current status '$status'");
+          insertLog("current status '".Status::get()."'");
           break;
         case 'collect':
-          // save params to file
-          // if (!Spider::saveArrayToFile($commands['params'], "web_$currPort.json")) {
-          //   insertLog("can't save params to file");
-          //   $status = Spider::ERROR;
-          //   break;
-          // }
-
           // set params to spider
+          // $status = Spider::COLLECTING;
+          Status::set(Spider::COLLECTING);
+          //insertLog("change status to $status");
           if (!sendToSpider('setParams', $commands['params'])) {
             insertLog("can't set params to spider");
-            $status = Spider::ERROR;
+            // $status = Spider::ERROR;
+            Status::set(Spider::ERROR);
+            //insertLog("error status $status");
             break;
           }
+          //insertLog("check status after setParams: $status");
 
           // start collect
           if (!sendToSpider($command, $commands['params'])) {
             insertLog("can't starting collect");
-            $status = Spider::ERROR;
+            // $status = Spider::ERROR;
+            Status::set(Spider::ERROR);
             break;
           }
+          //insertLog("check status after collect: $status");
 
-          // setting daemon status
-          $status = Spider::COLLECTING;
           $result['result'] = true;
-
           break;
         case 'setStatus':
           insertLog("get new status - {$commands['params']}");
@@ -111,45 +143,56 @@ if (isset($argv)) {
             case Spider::COLLECTED:
               $connection->send('ok');
               $sendAnswer = false;
-              $status = Spider::COLLECTED;
+              // $status = Spider::COLLECTED;
+              Status::set(Spider::COLLECTED);
               if (!sendToSpider('process')) {
                 insertLog("can't process the result");
-                $status = Spider::ERROR;
+                // $status = Spider::ERROR;
+                Status::set(Spider::ERROR);
                 break;
               }
-              $status = Spider::PROCESSING;
+              // $status = Spider::PROCESSING;
+              Status::set(Spider::PROCESSING);
               break;
             case Spider::PROCESSED:
               $connection->send('ok');
               $sendAnswer = false;
-              $status = Spider::PROCESSED;
+              // $status = Spider::PROCESSED;
+              Status::set(Spider::PROCESSED);
               if (!sendToSpider('storage')) {
                 insertLog("can't storage the result");
-                $status = Spider::ERROR;
+                // $status = Spider::ERROR;
+                Status::set(Spider::ERROR);
                 break;
               }
-              $status = Spider::STORAGING;
+              // $status = Spider::STORAGING;
+              Status::set(Spider::STORAGING);
               break;
             case Spider::STORAGED:
               $connection->send('ok');
               $sendAnswer = false;
-              $status = Spider::STORAGED;
+              // $status = Spider::STORAGED;
+              Status::set(Spider::STORAGED);
               if (!sendToSpider('collect')) {
                 insertLog("can't continue collect");
-                $status = Spider::ERROR;
+                // $status = Spider::ERROR;
+                Status::set(Spider::ERROR);
                 break;
               }
-              $status = Spider::COLLECTING;
+              // $status = Spider::COLLECTING;
+              Status::set(Spider::COLLECTING);
               break;
             case Spider::READY:
               $connection->send('ok');
               $sendAnswer = false;
-              if ($status == Spider::STORAGING)
+              // if ($status == Spider::STORAGING)
+              if (Status::get() == Spider::STORAGING)
                 if (!sendToWeb('collected', array($spiderAddr, $currPort))) {
                   insertLog("can't send to web status - collected");
                   break;
                 }
-              $status = Spider::READY;
+              // $status = Spider::READY;
+              Status::set(Spider::READY);
               break;
             default:
               insertLog("bad status - {$commands['params']}");
@@ -159,8 +202,10 @@ if (isset($argv)) {
           $result['result'] = 'bad command';
       }
     }
-    if ($sendAnswer)
+    if ($sendAnswer) {
+      //insertLog("check status before sending answer: $status");
       $connection->send(json_encode($result));
+    }
   };
 
   $tcp_worker->onClose = function($connection) {
@@ -172,7 +217,9 @@ if (isset($argv)) {
 //-----------------------------------------------------
 
 function monitor() {
-  //insertLog("monitor");
+  //global $status;
+  // insertLog("monitor, current status=$status");
+  insertLog("monitor, current status=".Status::get());
 } // monitor
 //-----------------------------------------------------
 
@@ -185,6 +232,7 @@ function sendToSpider($command, $params=NULL) {
   global $spiderSocket, $spiderAddr, $spiderPort;
 
   if (is_null($spiderSocket)) {
+    insertLog("creating socket to Spider");
     $spiderSocket = socket_create(AF_INET, SOCK_STREAM, 0);
     if (!socket_connect($spiderSocket, $spiderAddr, $spiderPort)) {
       insertLog("can't connect to socket");
@@ -198,7 +246,7 @@ function sendToSpider($command, $params=NULL) {
     return false;
   }
   $response = socket_read($spiderSocket, 1024);
-  insertLog($response);
+  insertLog("response: $response");
   if (($response === FALSE) || ($response == '')) {
     insertLog("bad response from socket");
     return false;
@@ -215,6 +263,7 @@ function sendToWeb($command, $params=NULL) {
   insertLog("sending command '$command' to web via $webAddr:$webPort");
   //--
   if (is_null($webSocket)) {
+    insertLog("creating socket to web");
     $webSocket = socket_create(AF_INET, SOCK_STREAM, 0);
     if (!socket_connect($webSocket, $webAddr, $webPort)) {
       insertLog("can't connect to socket");
@@ -228,7 +277,7 @@ function sendToWeb($command, $params=NULL) {
     return false;
   }
   $response = socket_read($webSocket, 1024);
-  insertLog($response);
+  insertLog("response: $response");
   if (($response === FALSE) || ($response == '')) {
     insertLog("bad response from socket");
     return false;

@@ -75,7 +75,6 @@ abstract class System {
             'command' => 'areYouReady',
             'addr' => $spy['addr'],
             'port' => $spy['port'],
-            'serverSelenium' => $spy['serverSelenium'],
             'starterAddr' => $starterIP,
             'starterPort' => $starterPort
           )
@@ -84,7 +83,7 @@ abstract class System {
         if (!\is_null($result) && \array_key_exists('result', $result) && ($result['result'])) {
           System::insertLog(\is_numeric($spy['addr']).' - '.\is_numeric($spy['port']));
           System::insertLog("spy started, connecting... tcp://{$spy['addr']}:{$spy['port']}");
-          \sleep(1);
+          \sleep(3);
           $socket = \socket_create(AF_INET, SOCK_STREAM, 0);
           $spyReady = \socket_connect($socket, $spy['addr'], $spy['port']);
         }

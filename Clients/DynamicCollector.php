@@ -15,6 +15,8 @@ use Facebook\WebDriver\Interactions\WebDriverActions;
 
 use Facebook\WebDriver\Exception\TimeOutException;
 use Facebook\WebDriver\Exception\UnrecognizedExceptionException;
+use Facebook\WebDriver\Exception\WebDriverCurlException;
+use Facebook\WebDriver\Exception\NoSuchElementException;
 
 require_once('lib/Selenium/autoload.php');
 
@@ -25,12 +27,31 @@ class DynamicCollector extends Collector {
   private $driver;
   private $wait;
   private $serverSelenium;
+  //-----------------------------------------------------
+
+  static function SeleniumAvailable($serverSelenium) {
+    $capabilities = array(
+      WebDriverCapabilityType::BROWSER_NAME => WebDriverBrowserType::CHROME,
+      WebDriverCapabilityType::PLATFORM => WebDriverPlatform::ANY
+    );
+
+    try {
+      $driver = RemoteWebDriver::create($serverSelenium, $capabilities);
+      $driver->close();
+      $driver->quit();
+    } catch (WebDriverCurlException $e) {
+      System::insertLog("WebDriverCurlException: ".$e->getMessage());
+      return false;
+    }
+
+    return true;
+  } // DynamicCollector::SeleniumAvailable
+  //-----------------------------------------------------
 
   function __construct($params, $serverSelenium) {
     parent::__construct($params);
 
     $this->serverSelenium = $serverSelenium;
-
     $this->driver = NULL;
   }
   //-----------------------------------------------------
@@ -248,9 +269,21 @@ class DynamicCollector extends Collector {
 
     //echo "start filtering. Count = ".count($filters)."\n";
     foreach ($element['element']['filter'] as $filter) {
+      print_r($filter);
       //echo "filter = '".$filter['value']."'\n";
       if (count($filter['value']) == 0)
         continue;
+      // вынес перед вызовом
+      // if ($filter['cssSelector'] == '')
+      //   $link = $element['link'];
+      // else {
+      //   $links = $this->getExistingElements($element['link'], $filter['cssSelector']);
+      //   if (\is_null($links)) {
+      //     System::insertLog("can't find element by cssSelector '{$filter['cssSelector']}' from element '{$element['cssSelector']}' for filter");
+      //     return false;
+      //   }
+      //   $link = $links[0];
+      // }
       $linkValue = $element['link']->getAttribute($filter['attr']);
       //$valueExists = false;
       $valueExists = $filter['xor'];
@@ -527,6 +560,8 @@ class DynamicCollector extends Collector {
       $this->driver->get($this->params['startPage']);
       System::insertLog('try current URL - ');
       System::insertLog($this->driver->getCurrentUrl());
+
+      sleep(3); // нужно ли время, чтобы подтянулась нужная кодировка?
 
       return true;
     } catch (TimeOutException $te) {

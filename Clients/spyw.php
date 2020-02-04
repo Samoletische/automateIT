@@ -41,7 +41,7 @@ if (isset($argv)) {
 
   insertLog("starting worker at tcp://$parentAddr:$currPort");
   $tcp_worker = new Worker("tcp://$parentAddr:$currPort");
-  $tcp_worker->count = 2;
+  $tcp_worker->count = 1;
 
   $timer = Timer::add(TIMER, function() {
     monitor();
@@ -137,6 +137,7 @@ function sendToParent($command, $params) {
   global $socket, $parentAddr, $parentPort;
 
   if (is_null($socket)) {
+    insertLog("creating socket to parent");
     $socket = socket_create(AF_INET, SOCK_STREAM, 0);
     if (!socket_connect($socket, $parentAddr, $parentPort)) {
       insertLog("can't connect to socket");
@@ -155,7 +156,7 @@ function sendToParent($command, $params) {
     insertLog("send status - $params");
   //--
   $response = socket_read($socket, 1024);
-  insertLog($response);
+  insertLog("response: $response");
   if (($response === FALSE) || ($response == '')) {
     insertLog("bad response from socket");
     return false;

@@ -132,11 +132,10 @@ function areYouReady($in) {
 
   if (array_key_exists('addr', $in)
       && array_key_exists('port', $in)
-      && array_key_exists('serverSelenium', $in)
       && array_key_exists('starterAddr', $in)
       && array_key_exists('starterPort', $in)) {
     // проверяем готовность Сборщика
-    $result['result'] = Spider::ReadyToUse($in['serverSelenium']);
+    $result['result'] = Spider::ReadyToUse();
 
     if (!$result['result']) {
       $result['message'] = 'spider not ready';

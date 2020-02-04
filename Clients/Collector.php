@@ -23,6 +23,19 @@ abstract class Collector {
   protected $childMaxItemsCollect;
   //-----------------------------------------------------
 
+  static function createCollector($params, $serverSelenium) {
+    if (\is_array($params) && \array_key_exists('needInteractive', $params)) {
+      if ($params['needInteractive']) {
+        if (!DynamicCollector::SeleniumAvailable($serverSelenium))
+          return NULL;
+        return new DynamicCollector($params, $serverSelenium);
+      } else
+        return new StaticCollector($params);
+    } else
+      return NULL;
+  } // Collector::createCollector
+  //-----------------------------------------------------
+
   function __construct($params) {
     $this->params = $params;
 

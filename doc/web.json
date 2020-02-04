@@ -27,6 +27,7 @@
       "cssSelector": "a.v-tabs__item",
       "filter": [
         {
+          "cssSelector": "",
           "attr": "textContent",
           "value": ["21.1 км "],
           "xor": false
@@ -40,6 +41,7 @@
     "cssSelector": "div.item_table",
     "filter": [
       {
+        "cssSelector": "",                                      // селектор элемента, аттрибут которого необходимо проверить. Если селектор пустой, - будет проверяться аттрибут текущего элемента.
         "attr": "data-ftid",                                    // наименование аттрибута для фильтрации значений
         "value": [
           "sales__bulls-item_is_hybrid"

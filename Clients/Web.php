@@ -48,24 +48,24 @@ class Web {
     $conf = Conf::getConf();
 
     System::insertLog("new task exists ({$this->params[0]['pageName']}), searching free Spider...");
+    System::insertLog("count of spiders: ".count($this->spiders));
     foreach($this->spiders as $spider) {
-      System::insertLog("getStatus");
+      System::insertLog("getStatus from {$spider['port']}");
       $status = $this->sendCommandToSpider($spider, 'getStatus');
-      System::insertLog("'$status'");
+      System::insertLog("got status '$status'");
 
-      if ($status != 'ready')
-        continue;
-
-      System::insertLog("spider {$spider['port']} is ready, starting collect...");
-      $params = \array_shift($this->params);
-      $result = $this->sendCommandToSpider($spider, 'collect', array($params, $conf->server, $spider['serverSelenium']));
-      if (!$result) {
-        array_unshift($this->params, $params);
-        System::insertLog("can't set params to Spider");
-        continue;
+      if ($status == 'ready') {
+        System::insertLog("spider {$spider['port']} is ready, starting collect...");
+        $params = \array_shift($this->params);
+        $result = $this->sendCommandToSpider($spider, 'collect', array($params, $conf->server, $spider['serverSelenium']));
+        if (!$result) {
+          array_unshift($this->params, $params);
+          System::insertLog("can't set params to Spider");
+          continue;
+        }
+        System::insertLog("collect is started on spider: {$spider['port']}");
+        break;
       }
-      System::insertLog("collect is started on spider: {$spider['port']}");
-      break;
     }
   }
   //-----------------------------------------------------
@@ -108,6 +108,7 @@ class Web {
 
   private function sendRequest($spider, $params) {
     if (is_null($spider['socket'])) {
+      System::insertLog("creating socket on {$spider['port']}");
       $spider['socket'] = socket_create(AF_INET, SOCK_STREAM, 0);
       if (!\socket_connect($spider['socket'], $spider['addr'], $spider['port']))
         $spider['socket'] = NULL;
