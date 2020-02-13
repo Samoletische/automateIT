@@ -71,7 +71,7 @@ if (isset($argv)) {
 
   system('echo '.getmypid().' > '.$argv[3].'/'.$argv[3].'_pid.txt');
 
-  //$status = Spider::READY;
+  $stat = Spider::READY;
   //$status = Status::get();
   $spiderSocket = NULL;
   $spiderAddr = $argv[2];
@@ -94,7 +94,7 @@ if (isset($argv)) {
   };
 
   $tcp_worker->onMessage = function($connection, $data) {
-    global $spiderAddr, $currPort;
+    global $stat, $spiderAddr, $currPort;
 
     $status = Status::get();
     $result = array('result' => NULL);
@@ -109,17 +109,18 @@ if (isset($argv)) {
         case 'getStatus':
           //$result['result'] = $status;
           $result['result'] = Status::get();
-          //insertLog("current status '$status'");
+          insertLog("current stat '$stat'");
           insertLog("current status '".Status::get()."'");
           break;
         case 'collect':
           // set params to spider
-          // $status = Spider::COLLECTING;
+          $stat = Spider::COLLECTING;
           Status::set(Spider::COLLECTING);
-          //insertLog("change status to $status");
+          insertLog("change stat to $stat");
+          insertLog("change status to ".Status::get());
           if (!sendToSpider('setParams', $commands['params'])) {
             insertLog("can't set params to spider");
-            // $status = Spider::ERROR;
+            $stat = Spider::ERROR;
             Status::set(Spider::ERROR);
             //insertLog("error status $status");
             break;
@@ -129,7 +130,7 @@ if (isset($argv)) {
           // start collect
           if (!sendToSpider($command, $commands['params'])) {
             insertLog("can't starting collect");
-            // $status = Spider::ERROR;
+            $stat = Spider::ERROR;
             Status::set(Spider::ERROR);
             break;
           }
@@ -143,43 +144,43 @@ if (isset($argv)) {
             case Spider::COLLECTED:
               $connection->send('ok');
               $sendAnswer = false;
-              // $status = Spider::COLLECTED;
+              $stat = Spider::COLLECTED;
               Status::set(Spider::COLLECTED);
               if (!sendToSpider('process')) {
                 insertLog("can't process the result");
-                // $status = Spider::ERROR;
+                $stat = Spider::ERROR;
                 Status::set(Spider::ERROR);
                 break;
               }
-              // $status = Spider::PROCESSING;
+              $stat = Spider::PROCESSING;
               Status::set(Spider::PROCESSING);
               break;
             case Spider::PROCESSED:
               $connection->send('ok');
               $sendAnswer = false;
-              // $status = Spider::PROCESSED;
+              $stat = Spider::PROCESSED;
               Status::set(Spider::PROCESSED);
               if (!sendToSpider('storage')) {
                 insertLog("can't storage the result");
-                // $status = Spider::ERROR;
+                $stat = Spider::ERROR;
                 Status::set(Spider::ERROR);
                 break;
               }
-              // $status = Spider::STORAGING;
+              $stat = Spider::STORAGING;
               Status::set(Spider::STORAGING);
               break;
             case Spider::STORAGED:
               $connection->send('ok');
               $sendAnswer = false;
-              // $status = Spider::STORAGED;
+              $stat = Spider::STORAGED;
               Status::set(Spider::STORAGED);
               if (!sendToSpider('collect')) {
                 insertLog("can't continue collect");
-                // $status = Spider::ERROR;
+                $stat = Spider::ERROR;
                 Status::set(Spider::ERROR);
                 break;
               }
-              // $status = Spider::COLLECTING;
+              $stat = Spider::COLLECTING;
               Status::set(Spider::COLLECTING);
               break;
             case Spider::READY:
@@ -191,7 +192,7 @@ if (isset($argv)) {
                   insertLog("can't send to web status - collected");
                   break;
                 }
-              // $status = Spider::READY;
+              $stat = Spider::READY;
               Status::set(Spider::READY);
               break;
             default:
@@ -203,7 +204,8 @@ if (isset($argv)) {
       }
     }
     if ($sendAnswer) {
-      //insertLog("check status before sending answer: $status");
+      insertLog("check stat before sending answer: $stat");
+      insertLog("check status before sending answer: ".Status::get());
       $connection->send(json_encode($result));
     }
   };
@@ -217,8 +219,8 @@ if (isset($argv)) {
 //-----------------------------------------------------
 
 function monitor() {
-  //global $status;
-  // insertLog("monitor, current status=$status");
+  global $stat;
+  insertLog("monitor, current stat=$stat");
   insertLog("monitor, current status=".Status::get());
 } // monitor
 //-----------------------------------------------------
