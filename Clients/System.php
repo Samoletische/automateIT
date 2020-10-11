@@ -2,8 +2,8 @@
 
 namespace Clients;
 
-require_once('Web.php');
-require_once(__DIR__.'/../lib/Workerman/Autoloader.php');
+include_once 'Web.php';
+include_once __DIR__.'/../lib/Workerman/Autoloader.php';
 
 use Workerman\Worker;
 
@@ -199,7 +199,7 @@ abstract class System {
 }
 //-----------------------------------------------------
 
-Class Conf {
+class Conf {
   static $instance = NULL;
   public $server;
   public $serverSelenium;

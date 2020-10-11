@@ -1,4 +1,4 @@
 #!/bin/bash
 ./cts
 #lib/phantomjs/bin/phantomjs --webdriver-selenium-grid-hub=http://192.168.0.10:4444
-php73 Clients/starter.php start
+php Clients/starter.php start

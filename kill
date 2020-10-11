@@ -1,2 +1,2 @@
 #!/bin/bash
-php73 spy_kill.php $1
+php spy_kill.php $1

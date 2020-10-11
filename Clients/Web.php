@@ -87,6 +87,10 @@ class Web {
     //   System::insertLog("collect");
     //   $this->sendCommandToSpider($spider, 'collect', array('params' => $this->params));
     // }
+
+    //++ only for test probe
+    return 'collecting';
+    //--
   }
   //-----------------------------------------------------
 

@@ -6,11 +6,11 @@ namespace Clients;
 // ini_set('display_errors', 1);
 // ini_set('display_startup_errors', 1);
 
-require_once('System.php');
-require_once('lib/Workerman/Autoloader.php');
+include_once './Clients/System.php';
+include_once './lib/Workerman/Autoloader.php';
 
-Use Workerman\Worker;
-Use Workerman\Lib\Timer;
+use Workerman\Worker;
+use Workerman\Lib\Timer;
 
 define('TIMER', 3);
 

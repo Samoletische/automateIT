@@ -2,7 +2,7 @@
 
 namespace Clients;
 
-require_once("Clients/System.php");
+include_once "./Clients/System.php";
 
 if (count($argv) < 2) {
   $files = explode('/', __FILE__);
@@ -24,7 +24,7 @@ foreach($conf['spiders'] as $spider) {
           'port' => $spider['port']
         )
       );
-      System::insertLog($commands['message']);
+      System::insertLog($result['message']);
       break;
     case 'stop':
       $socket = socket_create(AF_INET, SOCK_STREAM, 0);
